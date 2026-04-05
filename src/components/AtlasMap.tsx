@@ -94,9 +94,44 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
         map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
         resizeHandle = setTimeout(() => map?.resize(), 150);
 
+        // Log the token prefix so a deployed build can be sanity-checked
+        // from the devtools console without exposing the full secret.
+        // eslint-disable-next-line no-console
+        console.info(
+          "[atlas] token prefix:",
+          token.slice(0, 12) + "…",
+          "length:",
+          token.length,
+        );
+
+        // Timeout: if the style never finishes loading, surface an error
+        // instead of sitting on a blank canvas forever.
+        const styleTimeout = setTimeout(() => {
+          if (!cancelled && !map?.isStyleLoaded()) {
+            setLoadError(
+              "Mapbox style did not load within 10 seconds. Tile requests are being blocked or the token is being rejected. Check your browser Network tab for 401/403 responses from api.mapbox.com.",
+            );
+          }
+        }, 10000);
+
+        let firstError: string | null = null;
         map.on("error", (e) => {
+          const message =
+            e?.error?.message || String(e?.error || "unknown mapbox error");
           // eslint-disable-next-line no-console
-          console.warn("[atlas] mapbox error", e?.error);
+          console.warn("[atlas] mapbox error:", message, e);
+          // Capture the first error and surface it to the user so blank
+          // canvases never happen silently again.
+          if (!firstError) {
+            firstError = message;
+            if (!cancelled) setLoadError(message);
+          }
+        });
+
+        map.once("styledata", () => {
+          clearTimeout(styleTimeout);
+          // eslint-disable-next-line no-console
+          console.info("[atlas] style loaded ok");
         });
 
         map.on("load", () => {
