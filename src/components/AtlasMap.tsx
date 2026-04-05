@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useMemo, useRef, useState } from "react";
-import mapboxgl from "mapbox-gl";
-import "mapbox-gl/dist/mapbox-gl.css";
+// Type-only imports are erased at compile time so they never trigger
+// mapbox-gl's module-level code on the server during the initial render.
+import type { Map as MapboxMap, Marker as MapboxMarker } from "mapbox-gl";
 import { LOCATIONS, ROUTES, type Location, type Period } from "@/lib/data/locations";
 
 type Props = {
@@ -24,14 +25,16 @@ const ALL_PERIODS: Array<Period | "All"> = [
 
 export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
-  const markersRef = useRef<mapboxgl.Marker[]>([]);
+  const mapRef = useRef<MapboxMap | null>(null);
+  const markersRef = useRef<MapboxMarker[]>([]);
+  const mapboxLibRef = useRef<typeof import("mapbox-gl") | null>(null);
   const [period, setPeriod] = useState<Period | "All">("All");
   const [selected, setSelected] = useState<Location | null>(null);
   const [activeRoutes, setActiveRoutes] = useState<Set<string>>(
     () => new Set(highlightRouteId ? [highlightRouteId] : []),
   );
   const [mapReady, setMapReady] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -47,103 +50,121 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
     return list;
   }, [initialLocationIds, period]);
 
-  // Initialize the map once.
+  // Lazily load mapbox-gl + its CSS on the client and initialize the map.
   useEffect(() => {
     if (!token) return;
     if (!containerRef.current) return;
     if (mapRef.current) return;
 
-    mapboxgl.accessToken = token;
+    let cancelled = false;
+    let map: MapboxMap | null = null;
+    let resizeHandle: ReturnType<typeof setTimeout> | null = null;
+    let ro: ResizeObserver | null = null;
 
-    const map = new mapboxgl.Map({
-      container: containerRef.current,
-      style: "mapbox://styles/mapbox/light-v11",
-      center: [35.2, 31.7],
-      zoom: 4,
-      attributionControl: false,
-      projection: "mercator",
-    });
-
-    map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
-
-    // Nudge the map to pick up its container size once the layout settles.
-    const resizeHandle = setTimeout(() => map.resize(), 150);
-
-    map.on("load", () => {
-      // Tint every fill/background layer in the style towards a warm
-      // parchment palette so the atlas feels like an old map instead of
-      // a modern web map. We walk the layers rather than hard-coding
-      // layer ids because style internals change between versions.
+    (async () => {
       try {
-        const style = map.getStyle();
-        const layers = style?.layers ?? [];
-        for (const layer of layers) {
-          const id = layer.id;
-          if (layer.type === "background") {
-            map.setPaintProperty(id, "background-color", "#F3EAD8");
-          } else if (layer.type === "fill") {
-            // Water layers: cooler tint so coastlines are readable.
-            if (/water|ocean|sea|river|lake/i.test(id)) {
-              map.setPaintProperty(id, "fill-color", "#D9CDB3");
-            } else if (/land|earth|landcover|landuse/i.test(id)) {
-              map.setPaintProperty(id, "fill-color", "#F3EAD8");
+        // Dynamically import so mapbox-gl never runs on the server.
+        const mapboxModule = await import("mapbox-gl");
+        await import("mapbox-gl/dist/mapbox-gl.css");
+        if (cancelled || !containerRef.current) return;
+
+        const mapboxgl = mapboxModule.default;
+        mapboxLibRef.current = mapboxModule;
+        mapboxgl.accessToken = token;
+
+        map = new mapboxgl.Map({
+          container: containerRef.current,
+          style: "mapbox://styles/mapbox/light-v11",
+          center: [35.2, 31.7],
+          zoom: 4,
+          attributionControl: false,
+        });
+
+        map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
+        resizeHandle = setTimeout(() => map?.resize(), 150);
+
+        map.on("error", (e) => {
+          // eslint-disable-next-line no-console
+          console.warn("[atlas] mapbox error", e?.error);
+        });
+
+        map.on("load", () => {
+          if (!map) return;
+          try {
+            const style = map.getStyle();
+            const layers = style?.layers ?? [];
+            for (const layer of layers) {
+              const id = layer.id;
+              if (layer.type === "background") {
+                map.setPaintProperty(id, "background-color", "#F3EAD8");
+              } else if (layer.type === "fill") {
+                if (/water|ocean|sea|river|lake/i.test(id)) {
+                  map.setPaintProperty(id, "fill-color", "#D9CDB3");
+                } else if (/land|earth|landcover|landuse/i.test(id)) {
+                  map.setPaintProperty(id, "fill-color", "#F3EAD8");
+                }
+              }
             }
+          } catch {
+            /* ignore tint failures */
           }
+
+          for (const route of ROUTES) {
+            const coords = route.locationIds
+              .map((id) => LOCATIONS.find((l) => l.id === id))
+              .filter((l): l is Location => Boolean(l))
+              .map((l) => [l.lon, l.lat] as [number, number]);
+            const sourceId = `route-${route.id}`;
+            const layerId = `route-layer-${route.id}`;
+            map.addSource(sourceId, {
+              type: "geojson",
+              data: {
+                type: "Feature",
+                properties: {},
+                geometry: { type: "LineString", coordinates: coords },
+              },
+            });
+            map.addLayer({
+              id: layerId,
+              type: "line",
+              source: sourceId,
+              layout: {
+                "line-cap": "round",
+                "line-join": "round",
+                visibility: "none",
+              },
+              paint: {
+                "line-color": route.color,
+                "line-width": 2,
+                "line-dasharray": [2, 2],
+                "line-opacity": 0.85,
+              },
+            });
+          }
+
+          if (!cancelled) setMapReady(true);
+        });
+
+        mapRef.current = map;
+
+        ro = new ResizeObserver(() => {
+          map?.resize();
+        });
+        if (containerRef.current) ro.observe(containerRef.current);
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[atlas] failed to init mapbox", err);
+        if (!cancelled) {
+          setLoadError(err instanceof Error ? err.message : String(err));
         }
-      } catch {
-        /* Style might not expose layer list — ignore and use default. */
       }
-
-      // Prepare GeoJSON sources for each defined route.
-      for (const route of ROUTES) {
-        const coords = route.locationIds
-          .map((id) => LOCATIONS.find((l) => l.id === id))
-          .filter((l): l is Location => Boolean(l))
-          .map((l) => [l.lon, l.lat] as [number, number]);
-        const sourceId = `route-${route.id}`;
-        const layerId = `route-layer-${route.id}`;
-
-        map.addSource(sourceId, {
-          type: "geojson",
-          data: {
-            type: "Feature",
-            properties: {},
-            geometry: { type: "LineString", coordinates: coords },
-          },
-        });
-        map.addLayer({
-          id: layerId,
-          type: "line",
-          source: sourceId,
-          layout: {
-            "line-cap": "round",
-            "line-join": "round",
-            visibility: "none",
-          },
-          paint: {
-            "line-color": route.color,
-            "line-width": 2,
-            "line-dasharray": [2, 2],
-            "line-opacity": 0.85,
-          },
-        });
-      }
-
-      setMapReady(true);
-    });
-
-    mapRef.current = map;
-
-    // Keep the canvas in sync if the window or the flex layout resizes.
-    const ro = new ResizeObserver(() => {
-      map.resize();
-    });
-    if (containerRef.current) ro.observe(containerRef.current);
+    })();
 
     return () => {
-      clearTimeout(resizeHandle);
-      ro.disconnect();
-      map.remove();
+      cancelled = true;
+      if (resizeHandle) clearTimeout(resizeHandle);
+      if (ro) ro.disconnect();
+      if (map) map.remove();
       mapRef.current = null;
       setMapReady(false);
     };
@@ -152,9 +173,10 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
   // Render markers whenever visible set changes.
   useEffect(() => {
     const map = mapRef.current;
-    if (!map || !mapReady) return;
+    const lib = mapboxLibRef.current;
+    if (!map || !mapReady || !lib) return;
+    const mapboxgl = lib.default;
 
-    // Clear existing markers.
     for (const m of markersRef.current) m.remove();
     markersRef.current = [];
 
@@ -225,6 +247,32 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
           <div className="t-label mb-2">Map disabled</div>
           <p className="text-[13px]" style={{ color: "var(--color-ink-muted)" }}>
             Set <code>NEXT_PUBLIC_MAPBOX_TOKEN</code> in <code>.env.local</code> to enable the Atlas.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (loadError) {
+    return (
+      <div
+        className="h-full w-full flex items-center justify-center"
+        style={{ background: "var(--color-parchment)" }}
+      >
+        <div
+          className="border p-6 max-w-md text-center"
+          style={{
+            borderColor: "var(--color-border)",
+            background: "var(--color-surface)",
+            borderRadius: 8,
+          }}
+        >
+          <div className="t-label mb-2">Map failed to load</div>
+          <p className="text-[13px] mb-3" style={{ color: "var(--color-ink-muted)" }}>
+            {loadError}
+          </p>
+          <p className="text-[11px]" style={{ color: "var(--color-ink-faint)" }}>
+            Check your Mapbox token and network connection, then reload the page.
           </p>
         </div>
       </div>

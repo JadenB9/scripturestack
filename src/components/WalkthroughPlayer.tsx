@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import mapboxgl from "mapbox-gl";
+// Type-only — actual module is dynamically imported on the client.
+import type { Map as MapboxMap, Marker as MapboxMarker } from "mapbox-gl";
 import type { WalkthroughStop } from "@/lib/data/walkthrough";
 import { ERA_COLORS, ERA_ORDER } from "@/lib/data/walkthrough";
 import { LOCATIONS } from "@/lib/data/locations";
@@ -36,51 +37,80 @@ export function WalkthroughPlayer({ stops }: Props) {
   const [eraFilter, setEraFilter] = useState<string>("");
 
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<mapboxgl.Map | null>(null);
-  const markerRef = useRef<mapboxgl.Marker | null>(null);
+  const mapRef = useRef<MapboxMap | null>(null);
+  const markerRef = useRef<MapboxMarker | null>(null);
+  const mapboxLibRef = useRef<typeof import("mapbox-gl") | null>(null);
   const playTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [mapError, setMapError] = useState<string | null>(null);
 
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
   const current = stops[index];
 
-  // ── Map init ─────────────────────────────────────────────────
+  // ── Map init (dynamically imports mapbox-gl client-side only) ──
   useEffect(() => {
     if (!token || !containerRef.current || mapRef.current) return;
-    mapboxgl.accessToken = token;
-    const map = new mapboxgl.Map({
-      container: containerRef.current,
-      style: "mapbox://styles/mapbox/light-v11",
-      center: [33.5, 33],
-      zoom: 4.5,
-      attributionControl: false,
-    });
-    mapRef.current = map;
 
-    const ro = new ResizeObserver(() => map.resize());
-    ro.observe(containerRef.current);
+    let cancelled = false;
+    let localMap: MapboxMap | null = null;
+    let ro: ResizeObserver | null = null;
 
-    map.on("load", () => {
+    (async () => {
       try {
-        const style = map.getStyle();
-        for (const layer of style?.layers ?? []) {
-          if (layer.type === "background") {
-            map.setPaintProperty(layer.id, "background-color", "#F3EAD8");
-          } else if (layer.type === "fill") {
-            if (/water|ocean|sea|river|lake/i.test(layer.id)) {
-              map.setPaintProperty(layer.id, "fill-color", "#D9CDB3");
-            } else if (/land|earth|landcover|landuse/i.test(layer.id)) {
-              map.setPaintProperty(layer.id, "fill-color", "#F3EAD8");
+        const mapboxModule = await import("mapbox-gl");
+        await import("mapbox-gl/dist/mapbox-gl.css");
+        if (cancelled || !containerRef.current) return;
+
+        const mapboxgl = mapboxModule.default;
+        mapboxLibRef.current = mapboxModule;
+        mapboxgl.accessToken = token;
+
+        localMap = new mapboxgl.Map({
+          container: containerRef.current,
+          style: "mapbox://styles/mapbox/light-v11",
+          center: [33.5, 33],
+          zoom: 4.5,
+          attributionControl: false,
+        });
+        mapRef.current = localMap;
+
+        ro = new ResizeObserver(() => localMap?.resize());
+        ro.observe(containerRef.current);
+
+        localMap.on("error", (e) => {
+          // eslint-disable-next-line no-console
+          console.warn("[walkthrough] mapbox error", e?.error);
+        });
+
+        localMap.on("load", () => {
+          if (!localMap) return;
+          try {
+            const style = localMap.getStyle();
+            for (const layer of style?.layers ?? []) {
+              if (layer.type === "background") {
+                localMap.setPaintProperty(layer.id, "background-color", "#F3EAD8");
+              } else if (layer.type === "fill") {
+                if (/water|ocean|sea|river|lake/i.test(layer.id)) {
+                  localMap.setPaintProperty(layer.id, "fill-color", "#D9CDB3");
+                } else if (/land|earth|landcover|landuse/i.test(layer.id)) {
+                  localMap.setPaintProperty(layer.id, "fill-color", "#F3EAD8");
+                }
+              }
             }
+          } catch {
+            /* ignore tint failures */
           }
-        }
-      } catch {
-        /* ignore */
+        });
+      } catch (err) {
+        // eslint-disable-next-line no-console
+        console.error("[walkthrough] failed to init mapbox", err);
+        if (!cancelled) setMapError(err instanceof Error ? err.message : String(err));
       }
-    });
+    })();
 
     return () => {
-      ro.disconnect();
-      map.remove();
+      cancelled = true;
+      if (ro) ro.disconnect();
+      if (localMap) localMap.remove();
       mapRef.current = null;
     };
   }, [token]);
@@ -117,6 +147,10 @@ export function WalkthroughPlayer({ stops }: Props) {
     }
     if (!target && current.fallbackLonLat) target = current.fallbackLonLat;
     if (!target) return;
+
+    const lib = mapboxLibRef.current;
+    if (!lib) return;
+    const mapboxgl = lib.default;
 
     // Replace the marker rather than accumulating them.
     if (markerRef.current) markerRef.current.remove();
@@ -203,7 +237,17 @@ export function WalkthroughPlayer({ stops }: Props) {
     <div className="h-full flex flex-col lg:flex-row" style={{ background: "var(--color-parchment)" }}>
       {/* LEFT — map + era rail */}
       <div className="relative flex-1 min-h-[360px] border-b lg:border-b-0 lg:border-r" style={{ borderColor: "var(--color-border)" }}>
-        {!token ? (
+        {mapError ? (
+          <div className="h-full flex items-center justify-center">
+            <div
+              className="border p-6 max-w-md text-center"
+              style={{ borderColor: "var(--color-border)", background: "var(--color-surface)", borderRadius: 8 }}
+            >
+              <div className="t-label mb-2">Map failed to load</div>
+              <p className="text-[12px]" style={{ color: "var(--color-ink-muted)" }}>{mapError}</p>
+            </div>
+          </div>
+        ) : !token ? (
           <div className="h-full flex items-center justify-center">
             <div
               className="border p-6 max-w-sm text-center"
