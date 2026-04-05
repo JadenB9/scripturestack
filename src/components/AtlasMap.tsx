@@ -365,7 +365,14 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
 
   return (
     <div className="absolute inset-0" style={{ background: "#F3EAD8" }}>
-      <div ref={containerRef} className="absolute inset-0" />
+      {/*
+        Use h-full/w-full (not absolute inset-0) so the container keeps a
+        definite size after mapbox-gl overrides its inline `position` to
+        `relative` during init. With `absolute inset-0`, the `relative`
+        override collapses the element to 0 height and the canvas never
+        paints tiles — the bug that made this page look blank.
+      */}
+      <div ref={containerRef} className="h-full w-full" />
 
       {/* Period filter — top-left pill bar */}
       <div

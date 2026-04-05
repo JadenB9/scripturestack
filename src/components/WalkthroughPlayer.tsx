@@ -278,7 +278,11 @@ export function WalkthroughPlayer({ stops }: Props) {
             </div>
           </div>
         ) : (
-          <div ref={containerRef} className="absolute inset-0" />
+          // h-full/w-full (not absolute inset-0): mapbox-gl sets inline
+          // `position: relative` on the container after init, which makes
+          // `absolute inset-0` collapse to 0 height and the canvas never
+          // paints tiles. Explicit 100% dimensions survive the override.
+          <div ref={containerRef} className="h-full w-full" />
         )}
 
         {/* Era jump rail overlay */}
