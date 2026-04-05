@@ -7,7 +7,7 @@ import type { Map as MapboxMap, Marker as MapboxMarker } from "mapbox-gl";
 import type { WalkthroughStop } from "@/lib/data/walkthrough";
 import { ERA_COLORS, ERA_ORDER } from "@/lib/data/walkthrough";
 import { LOCATIONS } from "@/lib/data/locations";
-import { isWebGLAvailable } from "@/lib/webgl-check";
+import { detectWebGL } from "@/lib/webgl-check";
 
 type Props = { stops: WalkthroughStop[] };
 
@@ -43,7 +43,6 @@ export function WalkthroughPlayer({ stops }: Props) {
   const mapboxLibRef = useRef<typeof import("mapbox-gl") | null>(null);
   const playTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
-  const [webglBlocked, setWebglBlocked] = useState(false);
 
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
   const current = stops[index];
@@ -52,10 +51,9 @@ export function WalkthroughPlayer({ stops }: Props) {
   useEffect(() => {
     if (!token || !containerRef.current || mapRef.current) return;
 
-    if (!isWebGLAvailable()) {
-      setWebglBlocked(true);
-      return;
-    }
+    // Informational WebGL probe — logged, not used as a gate.
+    // eslint-disable-next-line no-console
+    console.info("[walkthrough] webgl probe:", detectWebGL());
 
     let cancelled = false;
     let localMap: MapboxMap | null = null;
@@ -244,26 +242,7 @@ export function WalkthroughPlayer({ stops }: Props) {
     <div className="h-full flex flex-col lg:flex-row" style={{ background: "var(--color-parchment)" }}>
       {/* LEFT — map + era rail */}
       <div className="relative flex-1 min-h-[360px] border-b lg:border-b-0 lg:border-r" style={{ borderColor: "var(--color-border)" }}>
-        {webglBlocked ? (
-          <div className="h-full flex items-center justify-center px-6">
-            <div
-              className="border p-6 max-w-[460px] text-left"
-              style={{ borderColor: "var(--color-border)", background: "var(--color-surface)", borderRadius: 8 }}
-            >
-              <div className="t-label mb-3">WebGL not available</div>
-              <p className="text-[14px] mb-3" style={{ color: "var(--color-ink)" }}>
-                The walkthrough map uses WebGL. Your browser isn&apos;t giving
-                Mapbox a WebGL context.
-              </p>
-              <div className="text-[12px] leading-[1.7]" style={{ color: "var(--color-ink-muted)" }}>
-                <strong className="block mb-1" style={{ color: "var(--color-ink)" }}>On Brave:</strong>
-                Click the shields icon in the address bar and either turn
-                shields off for this site or set &quot;Block fingerprinting&quot; to
-                Standard. Reload after.
-              </div>
-            </div>
-          </div>
-        ) : mapError ? (
+        {mapError ? (
           <div className="h-full flex items-center justify-center">
             <div
               className="border p-6 max-w-md text-center"

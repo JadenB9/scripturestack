@@ -6,7 +6,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 // mapbox-gl's module-level code on the server during the initial render.
 import type { Map as MapboxMap, Marker as MapboxMarker } from "mapbox-gl";
 import { LOCATIONS, ROUTES, type Location, type Period } from "@/lib/data/locations";
-import { isWebGLAvailable } from "@/lib/webgl-check";
+import { detectWebGL } from "@/lib/webgl-check";
 
 type Props = {
   initialLocationIds?: string[];
@@ -36,7 +36,6 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
   );
   const [mapReady, setMapReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const [webglBlocked, setWebglBlocked] = useState(false);
 
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -58,11 +57,12 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
     if (!containerRef.current) return;
     if (mapRef.current) return;
 
-    // Feature-detect WebGL before paying for mapbox-gl's bundle.
-    if (!isWebGLAvailable()) {
-      setWebglBlocked(true);
-      return;
-    }
+    // Informational WebGL probe — logged but not used as a hard gate.
+    // We let mapbox-gl be the source of truth so false negatives in our
+    // detection don't block users whose browsers can actually render.
+    const webglSupport = detectWebGL();
+    // eslint-disable-next-line no-console
+    console.info("[atlas] webgl probe:", webglSupport);
 
     let cancelled = false;
     let map: MapboxMap | null = null;
@@ -86,6 +86,9 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
           center: [35.2, 31.7],
           zoom: 4,
           attributionControl: false,
+          // Explicitly allow WebGL 1 so browsers without WebGL 2 still render.
+          // Mapbox v3 prefers WebGL 2 but this flag makes it fall back cleanly.
+          failIfMajorPerformanceCaveat: false,
         });
 
         map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
@@ -261,62 +264,55 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
     );
   }
 
-  if (webglBlocked) {
+  if (loadError) {
+    const isWebGLError = /webgl/i.test(loadError);
     return (
       <div
         className="h-full w-full flex items-center justify-center px-6"
         style={{ background: "var(--color-parchment)" }}
       >
         <div
-          className="border p-6 max-w-[460px] text-left"
+          className="border p-6 max-w-[500px] text-left"
           style={{
             borderColor: "var(--color-border)",
             background: "var(--color-surface)",
             borderRadius: 8,
           }}
         >
-          <div className="t-label mb-3">WebGL not available</div>
+          <div className="t-label mb-3">
+            {isWebGLError ? "WebGL could not start" : "Map failed to load"}
+          </div>
           <p className="text-[14px] mb-3" style={{ color: "var(--color-ink)" }}>
-            The Atlas uses WebGL to render an interactive map, but your browser
-            won&apos;t give Mapbox a WebGL context.
-          </p>
-          <div className="text-[12px] leading-[1.7] mb-4" style={{ color: "var(--color-ink-muted)" }}>
-            <strong className="block mb-1" style={{ color: "var(--color-ink)" }}>If you&apos;re on Brave:</strong>
-            Click the Brave shields icon (lion) in the address bar, then either
-            turn shields off for this site, or set &quot;Block fingerprinting&quot; to
-            &quot;Standard&quot; instead of &quot;Strict&quot;. Reload after.
-          </div>
-          <div className="text-[12px] leading-[1.7]" style={{ color: "var(--color-ink-muted)" }}>
-            <strong className="block mb-1" style={{ color: "var(--color-ink)" }}>Other browsers:</strong>
-            Make sure hardware acceleration is enabled in your browser settings,
-            and that your GPU drivers are up to date.
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  if (loadError) {
-    return (
-      <div
-        className="h-full w-full flex items-center justify-center"
-        style={{ background: "var(--color-parchment)" }}
-      >
-        <div
-          className="border p-6 max-w-md text-center"
-          style={{
-            borderColor: "var(--color-border)",
-            background: "var(--color-surface)",
-            borderRadius: 8,
-          }}
-        >
-          <div className="t-label mb-2">Map failed to load</div>
-          <p className="text-[13px] mb-3" style={{ color: "var(--color-ink-muted)" }}>
             {loadError}
           </p>
-          <p className="text-[11px]" style={{ color: "var(--color-ink-faint)" }}>
-            Check your Mapbox token and network connection, then reload the page.
-          </p>
+          {isWebGLError ? (
+            <div className="text-[12px] leading-[1.7] space-y-3" style={{ color: "var(--color-ink-muted)" }}>
+              <p>
+                The Atlas renders through WebGL. Your browser knows WebGL exists
+                but refused to give Mapbox a rendering context. A few things to try:
+              </p>
+              <div>
+                <strong className="block mb-1" style={{ color: "var(--color-ink)" }}>Hardware acceleration</strong>
+                Open <code>brave://settings/system</code> (or <code>chrome://settings/system</code>) and make sure
+                &quot;Use graphics acceleration when available&quot; is ON. Restart the browser after toggling.
+              </div>
+              <div>
+                <strong className="block mb-1" style={{ color: "var(--color-ink)" }}>Check your GPU</strong>
+                Open <code>brave://gpu</code>. Near the top, &quot;WebGL&quot; and &quot;WebGL2&quot; should both say
+                <em> Hardware accelerated</em>. If either says &quot;Software only&quot; or &quot;Unavailable&quot;, your
+                GPU drivers or a browser flag are blocking it.
+              </div>
+              <div>
+                <strong className="block mb-1" style={{ color: "var(--color-ink)" }}>Try another browser</strong>
+                Safari, Firefox, or Chrome will tell us quickly whether it&apos;s a
+                Brave-specific block or a system-level issue.
+              </div>
+            </div>
+          ) : (
+            <p className="text-[11px]" style={{ color: "var(--color-ink-faint)" }}>
+              Check your Mapbox token and network connection, then reload the page.
+            </p>
+          )}
         </div>
       </div>
     );

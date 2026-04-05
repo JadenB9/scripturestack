@@ -1,24 +1,48 @@
 /**
- * Feature-detects WebGL support in the current browser. Returns `true` if a
- * WebGL2 or WebGL1 context can be acquired on a test canvas.
+ * Feature-detects WebGL support in the current browser.
  *
- * Brave's aggressive fingerprinting protection and older GPUs are the two
- * most common reasons this returns `false`. We use it to fail fast with a
- * helpful error message instead of letting mapbox-gl throw a generic
- * "Failed to initialize WebGL" deep inside its init code.
+ * Important: each context type attempt must use a FRESH canvas element.
+ * Per the WebGL spec, once you call `getContext(type)` on a canvas, later
+ * calls with a different type return `null` even if they would otherwise
+ * have worked — so chaining `getContext('webgl2') || getContext('webgl')`
+ * on the same canvas produces false negatives.
+ *
+ * We return a discriminated result so callers can distinguish "WebGL is
+ * completely unavailable" from "only WebGL 1 is available" (mapbox-gl
+ * v3 prefers WebGL 2 but can fall back in many cases).
  */
-export function isWebGLAvailable(): boolean {
-  if (typeof window === "undefined") return false;
+
+export type WebGLSupport = "webgl2" | "webgl1" | "none";
+
+function tryContext(type: "webgl2" | "webgl" | "experimental-webgl"): boolean {
   try {
     const canvas = document.createElement("canvas");
-    canvas.width = 1;
-    canvas.height = 1;
-    const gl =
-      canvas.getContext("webgl2") ||
-      canvas.getContext("webgl") ||
-      (canvas.getContext("experimental-webgl") as WebGLRenderingContext | null);
-    return !!gl;
+    // Use a non-zero size — some driver combinations refuse 0x0.
+    canvas.width = 16;
+    canvas.height = 16;
+    const gl = canvas.getContext(type, {
+      failIfMajorPerformanceCaveat: false,
+      antialias: false,
+    });
+    if (!gl) return false;
+    // Some drivers return a "null" context — verify it's usable.
+    const realGl = gl as WebGLRenderingContext;
+    if (typeof realGl.getParameter !== "function") return false;
+    return true;
   } catch {
     return false;
   }
+}
+
+export function detectWebGL(): WebGLSupport {
+  if (typeof window === "undefined") return "none";
+  if (tryContext("webgl2")) return "webgl2";
+  if (tryContext("webgl")) return "webgl1";
+  if (tryContext("experimental-webgl")) return "webgl1";
+  return "none";
+}
+
+/** Back-compat boolean helper. */
+export function isWebGLAvailable(): boolean {
+  return detectWebGL() !== "none";
 }
