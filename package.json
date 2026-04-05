@@ -9,7 +9,7 @@
     "db:generate": "drizzle-kit generate",
     "db:push": "drizzle-kit push",
     "db:studio": "drizzle-kit studio",
-    "seed": "tsx scripts/seed-verses.ts"
+    "seed": "tsx --env-file=.env.local scripts/seed-verses.ts"
   },
   "dependencies": {
     "d3": "^7.9.0",
