@@ -89,6 +89,16 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
           // Explicitly allow WebGL 1 so browsers without WebGL 2 still render.
           // Mapbox v3 prefers WebGL 2 but this flag makes it fall back cleanly.
           failIfMajorPerformanceCaveat: false,
+          // Silently rewrite telemetry URLs to a no-op data: URL so ad
+          // blockers and browser shields don't flood the console with
+          // ERR_BLOCKED_BY_CLIENT errors for every map load event.
+          // Actual map tiles, styles, and glyphs are never touched.
+          transformRequest: (url) => {
+            if (url.startsWith("https://events.mapbox.com/")) {
+              return { url: "data:," };
+            }
+            return { url };
+          },
         });
 
         map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
@@ -354,7 +364,7 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
   }
 
   return (
-    <div className="absolute inset-0">
+    <div className="absolute inset-0" style={{ background: "#F3EAD8" }}>
       <div ref={containerRef} className="absolute inset-0" />
 
       {/* Period filter — top-left pill bar */}

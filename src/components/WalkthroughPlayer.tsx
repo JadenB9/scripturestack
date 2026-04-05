@@ -75,6 +75,15 @@ export function WalkthroughPlayer({ stops }: Props) {
           center: [33.5, 33],
           zoom: 4.5,
           attributionControl: false,
+          failIfMajorPerformanceCaveat: false,
+          // Silently drop telemetry requests so ad blockers don't flood
+          // the console with ERR_BLOCKED_BY_CLIENT. Tiles/styles untouched.
+          transformRequest: (url) => {
+            if (url.startsWith("https://events.mapbox.com/")) {
+              return { url: "data:," };
+            }
+            return { url };
+          },
         });
         mapRef.current = localMap;
 
