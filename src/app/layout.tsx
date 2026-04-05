@@ -1,33 +1,44 @@
 import type { Metadata } from "next";
-import { JetBrains_Mono } from "next/font/google";
 import "./globals.css";
-
-const jetbrainsMono = JetBrains_Mono({
-  variable: "--font-mono",
-  subsets: ["latin"],
-});
+import { AppShell } from "@/components/AppShell";
 
 export const metadata: Metadata = {
-  title: "Scripture Stack",
-  description: "A new way to study the Word — semantic search, visualization, and ML-powered insights across the Bible.",
+  title: "ScriptureStack — The Bible, compiled for curious minds",
+  description:
+    "A scholarly Bible study application. Read, annotate, compare translations, trace prophecies, and search scripture by meaning.",
   metadataBase: new URL("https://scripturestack.j4den.com"),
   openGraph: {
-    title: "Scripture Stack",
-    description: "A new way to study the Word.",
+    title: "ScriptureStack",
+    description: "The Bible, compiled for curious minds.",
     url: "https://scripturestack.j4den.com",
-    siteName: "Scripture Stack",
+    siteName: "ScriptureStack",
     type: "website",
   },
 };
 
+// Inline script to set theme class before hydration — prevents flash of wrong theme.
+const themeInitScript = `
+(function(){
+  try {
+    var t = localStorage.getItem('ss-theme');
+    var d = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    var mode = t === 'dark' || t === 'light' ? t : (d ? 'dark' : 'light');
+    if (mode === 'dark') document.documentElement.classList.add('dark');
+  } catch (e) {}
+})();
+`;
+
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="en" className={`${jetbrainsMono.variable} h-full antialiased`}>
-      <body className="min-h-full flex flex-col font-mono">{children}</body>
+    <html lang="en" className="h-full">
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
+      </head>
+      <body className="min-h-full antialiased">
+        <AppShell>{children}</AppShell>
+      </body>
     </html>
   );
 }

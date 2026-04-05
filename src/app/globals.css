@@ -1,53 +1,416 @@
 @import "tailwindcss";
 
+/*
+ * ScriptureStack — design tokens
+ * A scholarly-tool aesthetic: warm parchment, ink, deep amber gold, navy blue.
+ * No gradients. No shadows on cards (borders only). Muted, handcrafted feel.
+ */
+
 :root {
-  --background: #0a0a0a;
-  --foreground: #ededed;
-  --accent: #a0a0a0;
-  --accent-light: #cccccc;
-  --amber: #d4a050;
-  --teal: #5fb3a1;
-  --card-bg: #111111;
-  --card-border: #222222;
-  --prompt: #888888;
+  /* Light mode — parchment palette */
+  --color-parchment: #F9F6EF;
+  --color-surface: #FFFFFF;
+  --color-ink: #1C1917;
+  --color-ink-muted: #57534E;
+  --color-ink-faint: #A8A29E;
+  --color-gold: #92400E;
+  --color-gold-light: #FEF3C7;
+  --color-navy: #1E3A5F;
+  --color-navy-light: #EFF6FF;
+  --color-border: #E7E5E4;
+  --color-border-strong: #D6D3D1;
+
+  /* Annotation hues */
+  --ann-yellow: #FEF3C7;
+  --ann-yellow-b: #CA8A04;
+  --ann-blue: #DBEAFE;
+  --ann-blue-b: #2563EB;
+  --ann-green: #D1FAE5;
+  --ann-green-b: #059669;
+  --ann-purple: #EDE9FE;
+  --ann-purple-b: #7C3AED;
+  --ann-red: #FEE2E2;
+  --ann-red-b: #DC2626;
+
+  /* Fonts */
+  --font-serif: 'Iowan Old Style', 'Palatino Linotype', 'Georgia', 'Times New Roman', serif;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  --font-hebrew: 'SBL Hebrew', 'Ezra SIL', 'Times New Roman', serif;
+  --font-greek: 'SBL Greek', 'Galatia SIL', 'Gentium', 'Times New Roman', serif;
+}
+
+html.dark {
+  --color-parchment: #171512;
+  --color-surface: #1C1917;
+  --color-ink: #F5F0E8;
+  --color-ink-muted: #A8A29E;
+  --color-ink-faint: #57534E;
+  --color-gold: #D97706;
+  --color-gold-light: #3B2A0E;
+  --color-navy: #93C5FD;
+  --color-navy-light: #1E2A3F;
+  --color-border: #292524;
+  --color-border-strong: #3F3B37;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --color-accent: var(--accent);
-  --color-accent-light: var(--accent-light);
-  --color-amber: var(--amber);
-  --color-teal: var(--teal);
-  --color-card-bg: var(--card-bg);
-  --color-card-border: var(--card-border);
-  --color-prompt: var(--prompt);
-  --font-mono: var(--font-mono);
+  --color-parchment: var(--color-parchment);
+  --color-surface: var(--color-surface);
+  --color-ink: var(--color-ink);
+  --color-ink-muted: var(--color-ink-muted);
+  --color-ink-faint: var(--color-ink-faint);
+  --color-gold: var(--color-gold);
+  --color-gold-light: var(--color-gold-light);
+  --color-navy: var(--color-navy);
+  --color-navy-light: var(--color-navy-light);
+  --color-border: var(--color-border);
+  --color-border-strong: var(--color-border-strong);
+  --font-serif: var(--font-serif);
+  --font-sans: var(--font-sans);
+}
+
+* {
+  border-color: var(--color-border);
+}
+
+html, body {
+  background: var(--color-parchment);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: var(--font-mono), "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+  min-height: 100vh;
 }
 
-@keyframes blink {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0; }
+/* Scholarly serif for Bible text */
+.font-serif {
+  font-family: var(--font-serif);
+  font-feature-settings: "lnum", "kern";
 }
 
-@keyframes pulse-dot {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
+.font-sans {
+  font-family: var(--font-sans);
 }
 
-.cursor::after {
-  content: "▊";
-  animation: blink 1s step-end infinite;
-  color: var(--teal);
-  margin-left: 4px;
+.font-hebrew {
+  font-family: var(--font-hebrew);
+  direction: rtl;
+  unicode-bidi: embed;
 }
 
-.pulse-dot {
-  animation: pulse-dot 1.5s ease-in-out infinite;
+.font-greek {
+  font-family: var(--font-greek);
+}
+
+/* Custom focus ring — muted gold, never blue */
+*:focus {
+  outline: none;
+}
+*:focus-visible {
+  outline: 2px solid var(--color-gold);
+  outline-offset: 2px;
+  border-radius: 2px;
+}
+
+/* Inputs — bottom border only */
+input[type="text"],
+input[type="search"],
+input[type="email"],
+textarea,
+select {
+  background: transparent;
+  color: var(--color-ink);
+  border: none;
+  border-bottom: 1px solid var(--color-border);
+  padding: 8px 2px;
+  width: 100%;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  transition: border-color 150ms ease-out;
+}
+input[type="text"]:focus,
+input[type="search"]:focus,
+input[type="email"]:focus,
+textarea:focus,
+select:focus {
+  border-bottom-color: var(--color-gold);
+  outline: none;
+}
+input::placeholder,
+textarea::placeholder {
+  color: var(--color-ink-faint);
+}
+
+/* Buttons baseline — no default rounding, no shadow */
+button {
+  font-family: var(--font-sans);
+  cursor: pointer;
+  background: transparent;
+  border: none;
+  color: inherit;
+  padding: 0;
+}
+
+/* Verse text typography — the most important rule in this file */
+.verse-text {
+  font-family: var(--font-serif);
+  font-size: 18px;
+  line-height: 1.8;
+  color: var(--color-ink);
+  letter-spacing: 0.003em;
+}
+
+.verse-number {
+  font-size: 11px;
+  color: var(--color-ink-faint);
+  vertical-align: super;
+  line-height: 0;
+  margin-right: 4px;
+  font-family: var(--font-sans);
+  font-weight: 400;
+  user-select: none;
+}
+
+.verse-poetry {
+  padding-left: 24px;
+  line-height: 1.65;
+}
+
+/* Subtle word hover for lexicon interaction */
+.lex-word {
+  cursor: pointer;
+  transition: background-color 120ms ease-out, box-shadow 120ms ease-out;
+  padding: 0 1px;
+}
+.lex-word:hover {
+  background-color: var(--color-gold-light);
+  box-shadow: 0 1px 0 0 var(--color-gold);
+}
+
+/* Skeleton placeholder — no spinners, ever */
+@keyframes skeleton-shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--color-border) 0%,
+    var(--color-border-strong) 50%,
+    var(--color-border) 100%
+  );
+  background-size: 200% 100%;
+  animation: skeleton-shimmer 1.6s ease-in-out infinite;
+  border-radius: 2px;
+}
+
+/* Verse pulse — used when a timeline node is clicked */
+@keyframes verse-pulse {
+  0% { background-color: transparent; }
+  20% { background-color: var(--color-gold-light); }
+  100% { background-color: transparent; }
+}
+.verse-pulse {
+  animation: verse-pulse 1400ms ease-out;
+}
+
+/* Fade-in (staggered search results) */
+@keyframes fade-in-up {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.fade-in {
+  animation: fade-in-up 220ms ease-out both;
+}
+
+/* Panel slide — right-side */
+@keyframes panel-slide-in {
+  from { transform: translateX(100%); }
+  to { transform: translateX(0); }
+}
+.panel-slide {
+  animation: panel-slide-in 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+/* Flip card primitive (books grid) */
+.flip-card {
+  perspective: 1000px;
+}
+.flip-card-inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transition: transform 520ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  transform-style: preserve-3d;
+  will-change: transform;
+}
+.flip-card:hover .flip-card-inner,
+.flip-card.is-flipped .flip-card-inner {
+  transform: rotateY(180deg);
+}
+.flip-card-front,
+.flip-card-back {
+  position: absolute;
+  inset: 0;
+  -webkit-backface-visibility: hidden;
+  backface-visibility: hidden;
+}
+.flip-card-back {
+  transform: rotateY(180deg);
+}
+
+/* Typographic scale — used across the app */
+.t-display {
+  font-family: var(--font-serif);
+  font-size: clamp(32px, 5vw, 56px);
+  line-height: 1.1;
+  letter-spacing: -0.015em;
+  font-weight: 400;
+}
+.t-h1 {
+  font-family: var(--font-serif);
+  font-size: 28px;
+  line-height: 1.25;
+  letter-spacing: -0.005em;
+  font-weight: 500;
+}
+.t-h2 {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  line-height: 1.35;
+  font-weight: 500;
+}
+.t-label {
+  font-family: var(--font-sans);
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--color-ink-muted);
+  font-weight: 500;
+}
+.t-meta {
+  font-family: var(--font-sans);
+  font-size: 12px;
+  color: var(--color-ink-muted);
+}
+
+/* Badge primitive */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  font-family: var(--font-sans);
+  font-size: 11px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 2px 6px;
+  border-radius: 2px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+.badge-gold {
+  background: var(--color-gold-light);
+  color: var(--color-gold);
+}
+.badge-navy {
+  background: var(--color-navy-light);
+  color: var(--color-navy);
+}
+.badge-muted {
+  background: var(--color-border);
+  color: var(--color-ink-muted);
+}
+
+/* Button primitives */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--color-border-strong);
+  background: transparent;
+  color: var(--color-ink);
+  font-size: 13px;
+  font-family: var(--font-sans);
+  transition: all 150ms ease-out;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.btn:hover {
+  border-color: var(--color-gold);
+  color: var(--color-gold);
+}
+.btn-primary {
+  background: var(--color-gold);
+  color: #FFFFFF;
+  border-color: var(--color-gold);
+}
+.btn-primary:hover {
+  background: #78350F;
+  border-color: #78350F;
+  color: #FFFFFF;
+}
+.btn-ghost {
+  border-color: transparent;
+}
+
+/* Sidebar nav link */
+.nav-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px 6px 14px;
+  font-size: 13px;
+  color: var(--color-ink-muted);
+  border-left: 2px solid transparent;
+  transition: color 120ms ease-out, border-color 120ms ease-out;
+  text-decoration: none;
+}
+.nav-link:hover {
+  color: var(--color-ink);
+}
+.nav-link.is-active {
+  color: var(--color-gold);
+  border-left-color: var(--color-gold);
+  font-weight: 500;
+}
+
+.nav-section-label {
+  font-family: var(--font-sans);
+  font-size: 10px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--color-ink-faint);
+  padding: 14px 16px 6px;
+}
+
+/* Scrollbar — minimal */
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 10px;
+  border: 2px solid var(--color-parchment);
+}
+::-webkit-scrollbar-thumb:hover {
+  background: var(--color-ink-faint);
+}
+
+/* Utility: hide when parent is not hovered */
+.parent-hover-show { opacity: 0; transition: opacity 120ms ease-out; }
+.group:hover .parent-hover-show { opacity: 1; }
+
+/* Selection */
+::selection {
+  background: var(--color-gold-light);
+  color: var(--color-ink);
 }
