@@ -1,0 +1,53 @@
+@import "tailwindcss";
+
+:root {
+  --background: #0a0a0a;
+  --foreground: #ededed;
+  --accent: #a0a0a0;
+  --accent-light: #cccccc;
+  --amber: #d4a050;
+  --teal: #5fb3a1;
+  --card-bg: #111111;
+  --card-border: #222222;
+  --prompt: #888888;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-accent: var(--accent);
+  --color-accent-light: var(--accent-light);
+  --color-amber: var(--amber);
+  --color-teal: var(--teal);
+  --color-card-bg: var(--card-bg);
+  --color-card-border: var(--card-border);
+  --color-prompt: var(--prompt);
+  --font-mono: var(--font-mono);
+}
+
+body {
+  background: var(--background);
+  color: var(--foreground);
+  font-family: var(--font-mono), "JetBrains Mono", "Fira Code", Menlo, Consolas, monospace;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0; }
+}
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.cursor::after {
+  content: "▊";
+  animation: blink 1s step-end infinite;
+  color: var(--teal);
+  margin-left: 4px;
+}
+
+.pulse-dot {
+  animation: pulse-dot 1.5s ease-in-out infinite;
+}
