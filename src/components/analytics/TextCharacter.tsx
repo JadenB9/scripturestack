@@ -119,17 +119,12 @@ export function TextCharacter() {
           </>
         )}
 
-        <div className="ml-auto flex items-center gap-0 border rounded overflow-hidden" style={{ borderColor: "var(--color-border-strong)" }}>
+        <div className="segment ml-auto">
           {(["sentiment", "texture"] as const).map((s) => (
             <button
               key={s}
               onClick={() => setSection(s)}
-              className="h-8 px-4 text-[12px] transition-colors"
-              style={{
-                background: section === s ? "var(--color-gold-light)" : "transparent",
-                color: section === s ? "var(--color-gold)" : "var(--color-ink-muted)",
-                borderRight: s !== "texture" ? "1px solid var(--color-border)" : undefined,
-              }}
+              className={section === s ? "is-active" : ""}
             >
               {s === "sentiment" ? "Sentiment Arc" : "Narrative Texture"}
             </button>

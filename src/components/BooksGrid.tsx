@@ -31,17 +31,12 @@ export function BooksGrid({ books }: { books: BookMeta[] }) {
     <div>
       {/* Filter bar */}
       <div className="flex flex-wrap items-center gap-3 mb-8 pb-4 border-b" style={{ borderColor: "var(--color-border)" }}>
-        <div className="flex items-center gap-0 border rounded overflow-hidden" style={{ borderColor: "var(--color-border-strong)" }}>
+        <div className="segment">
           {(["All", "OT", "NT"] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTestament(t)}
-              className="h-8 px-4 text-[12px] transition-colors"
-              style={{
-                background: testament === t ? "var(--color-gold-light)" : "transparent",
-                color: testament === t ? "var(--color-gold)" : "var(--color-ink-muted)",
-                borderRight: t !== "NT" ? "1px solid var(--color-border)" : undefined,
-              }}
+              className={testament === t ? "is-active" : ""}
             >
               {t === "OT" ? "Old Testament" : t === "NT" ? "New Testament" : "All"}
             </button>
@@ -63,7 +58,7 @@ export function BooksGrid({ books }: { books: BookMeta[] }) {
                 style={{
                   borderColor: active ? GENRE_COLORS[g] : "var(--color-border)",
                   color: active ? GENRE_COLORS[g] : "var(--color-ink-muted)",
-                  background: active ? "var(--color-gold-light)" : "transparent",
+                  background: "transparent",
                 }}
               >
                 {g}

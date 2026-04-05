@@ -15,6 +15,7 @@ type Result = {
 
 type SearchResponse = {
   query: string;
+  queryTerms?: string[];
   results: Result[];
 };
 
@@ -28,9 +29,30 @@ type MapPoint = {
   y: number;
 };
 
+function highlightTerms(text: string, terms: string[]): React.ReactNode {
+  if (terms.length === 0) return text;
+  const pattern = new RegExp(`\\b(${terms.map((t) => t.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")).join("|")})\\b`, "gi");
+  const parts = text.split(pattern);
+  return parts.map((part, i) => {
+    const isMatch = terms.some((t) => part.toLowerCase() === t.toLowerCase());
+    if (isMatch) {
+      return (
+        <mark
+          key={i}
+          style={{ background: "var(--color-gold-light)", color: "var(--color-gold)", padding: "0 2px", borderRadius: 2 }}
+        >
+          {part}
+        </mark>
+      );
+    }
+    return <span key={i}>{part}</span>;
+  });
+}
+
 export function SemanticSearch() {
   const [query, setQuery] = useState("");
   const [results, setResults] = useState<Result[] | null>(null);
+  const [queryTerms, setQueryTerms] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [mapPoints, setMapPoints] = useState<MapPoint[]>([]);
   const [mapLoading, setMapLoading] = useState(true);
@@ -63,6 +85,7 @@ export function SemanticSearch() {
       const data = (await res.json()) as SearchResponse;
       const list = data.results ?? [];
       setResults(list);
+      setQueryTerms(data.queryTerms ?? []);
       setHighlightIds(new Set(list.map((r) => r.id)));
     } catch {
       setResults([]);
@@ -140,7 +163,7 @@ export function SemanticSearch() {
                     {BOOKS_BY_NAME.get(r.book)?.testament ?? ""}
                   </span>
                 </div>
-                <p className="verse-text" style={{ fontSize: 15 }}>{r.text}</p>
+                <p className="verse-text" style={{ fontSize: 15 }}>{highlightTerms(r.text, queryTerms)}</p>
                 <div className="mt-2 flex items-center gap-2">
                   <div className="flex-1 h-1 rounded-full overflow-hidden" style={{ background: "var(--color-border)" }}>
                     <div

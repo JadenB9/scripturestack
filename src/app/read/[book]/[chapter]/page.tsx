@@ -3,6 +3,7 @@ import type { Metadata } from "next";
 import { getBook, BOOKS } from "@/lib/data/books";
 import { loadChapter } from "@/lib/chapters";
 import { getEventsForChapter } from "@/lib/data/chapter-events";
+import { generateChapterFlow } from "@/lib/generate-chapter-flow";
 import { VARIANTS } from "@/lib/data/manuscripts";
 import { ReadingView } from "@/components/ReadingView";
 
@@ -29,7 +30,23 @@ export default async function ReadPage({ params }: PageProps) {
   }
 
   const verses = await loadChapter(book, chapter);
-  const events = getEventsForChapter(book, chapter);
+
+  // Prefer the hand-curated chapter events when they exist (richer titles
+  // for key passages). Otherwise auto-generate from the loaded verse text
+  // so every chapter gets a meaningful flow strip.
+  const handCurated = getEventsForChapter(book, chapter);
+  const events =
+    handCurated.length > 0
+      ? handCurated
+      : generateChapterFlow(
+          book,
+          chapter,
+          verses.map((v) => ({
+            verse: v.verse,
+            text: v.text,
+            paragraphBreakBefore: v.paragraphBreakBefore,
+          }))
+        );
 
   // Flag verses that have textual variants by verse number.
   const variantVerses = new Set<number>();

@@ -53,11 +53,32 @@ export function VerseBlock({
       {verse.paragraphBreakBefore && <div style={{ height: 16 }} />}
       <div
         id={`v${verse.verse}`}
-        className={`group relative py-0.5 pl-4 pr-2 -mx-2 rounded-sm ${highlighted ? "verse-pulse" : ""}`}
+        className={`verse-row group relative py-0.5 pl-4 pr-2 -mx-2 ${highlighted ? "verse-pulse" : ""}`}
         style={{
           borderLeft: borderColor ? `2px solid ${borderColor}` : "2px solid transparent",
           marginLeft: -4,
         }}
+        onClick={(e) => {
+          // Don't open the editor if the click landed on a word, a variant
+          // button, an existing annotation panel, or an inner link.
+          const target = e.target as HTMLElement;
+          if (
+            target.closest(".lex-word") ||
+            target.closest("button") ||
+            target.closest("a") ||
+            target.closest("[data-ann-editor]")
+          ) return;
+          setEditorOpen((o) => !o);
+        }}
+        role="button"
+        tabIndex={0}
+        onKeyDown={(e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            setEditorOpen((o) => !o);
+          }
+        }}
+        aria-label={`Verse ${verse.verse}${hasAnn ? " — has annotations" : ""}`}
       >
         {hasAnn && (
           <span
@@ -85,26 +106,20 @@ export function VerseBlock({
           <WordSpans
             text={verse.text}
             onWordClick={(w, rect) => setLexEntry({ word: w, rect })}
-          />{" "}
-          <button
-            onClick={() => setEditorOpen((o) => !o)}
-            className="parent-hover-show ml-1 text-[11px]"
-            style={{ color: "var(--color-ink-faint)" }}
-            aria-label="Add annotation"
-          >
-            +
-          </button>
+          />
         </p>
 
         {editorOpen && (
-          <AnnotationEditor
-            book={verse.book}
-            chapter={verse.chapter}
-            verse={verse.verse}
-            existing={annotations}
-            onClose={() => setEditorOpen(false)}
-            onChange={onAnnotationChange}
-          />
+          <div data-ann-editor onClick={(e) => e.stopPropagation()}>
+            <AnnotationEditor
+              book={verse.book}
+              chapter={verse.chapter}
+              verse={verse.verse}
+              existing={annotations}
+              onClose={() => setEditorOpen(false)}
+              onChange={onAnnotationChange}
+            />
+          </div>
         )}
       </div>
       {lexEntry && (
@@ -118,7 +133,8 @@ export function VerseBlock({
   );
 }
 
-/** Wrap known-lexical words in a subtle hover span. */
+/** Wrap known-lexical words in a clickable span with an always-visible
+ *  dotted underline so readers know which words can be looked up. */
 function WordSpans({
   text,
   onWordClick,
@@ -126,7 +142,6 @@ function WordSpans({
   text: string;
   onWordClick: (word: string, rect: DOMRect) => void;
 }) {
-  // Split on whitespace preserving original text chunks.
   const tokens = text.split(/(\s+)/);
   return (
     <>
@@ -140,6 +155,7 @@ function WordSpans({
             key={i}
             className="lex-word"
             onClick={(e) => {
+              e.stopPropagation();
               const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
               onWordClick(stripped, rect);
             }}

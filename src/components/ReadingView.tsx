@@ -84,7 +84,7 @@ export function ReadingView({
       <header
         className="sticky top-0 z-20 border-b backdrop-blur"
         style={{
-          background: "rgba(249, 246, 239, 0.92)",
+          background: "var(--color-parchment-translucent)",
           borderColor: "var(--color-border)",
         }}
       >

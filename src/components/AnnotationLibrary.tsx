@@ -145,12 +145,8 @@ export function AnnotationLibrary() {
                   if (active) next.delete(t.value); else next.add(t.value);
                   setTypes(next);
                 }}
-                className="text-[11px] px-2 py-1 border rounded"
-                style={{
-                  borderColor: active ? "var(--color-gold)" : "var(--color-border)",
-                  color: active ? "var(--color-gold)" : "var(--color-ink-muted)",
-                  background: active ? "var(--color-gold-light)" : "transparent",
-                }}
+                className={`pill ${active ? "is-active" : ""}`}
+                style={{ fontSize: 11, padding: "4px 10px" }}
               >
                 {t.label}
               </button>

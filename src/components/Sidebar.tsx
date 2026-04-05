@@ -15,6 +15,7 @@ const SECTIONS: NavSection[] = [
     items: [
       { label: "Books", href: "/books" },
       { label: "Reading", href: "/read/Genesis/1" },
+      { label: "Walkthrough", href: "/walkthrough" },
     ],
   },
   {

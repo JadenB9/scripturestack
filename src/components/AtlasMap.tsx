@@ -61,26 +61,37 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
       center: [35.2, 31.7],
       zoom: 4,
       attributionControl: false,
+      projection: "mercator",
     });
 
     map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
 
+    // Nudge the map to pick up its container size once the layout settles.
+    const resizeHandle = setTimeout(() => map.resize(), 150);
+
     map.on("load", () => {
-      // Warm the base layers for parchment feel.
+      // Tint every fill/background layer in the style towards a warm
+      // parchment palette so the atlas feels like an old map instead of
+      // a modern web map. We walk the layers rather than hard-coding
+      // layer ids because style internals change between versions.
       try {
-        map.setPaintProperty("background", "background-color", "#F3EAD8");
+        const style = map.getStyle();
+        const layers = style?.layers ?? [];
+        for (const layer of layers) {
+          const id = layer.id;
+          if (layer.type === "background") {
+            map.setPaintProperty(id, "background-color", "#F3EAD8");
+          } else if (layer.type === "fill") {
+            // Water layers: cooler tint so coastlines are readable.
+            if (/water|ocean|sea|river|lake/i.test(id)) {
+              map.setPaintProperty(id, "fill-color", "#D9CDB3");
+            } else if (/land|earth|landcover|landuse/i.test(id)) {
+              map.setPaintProperty(id, "fill-color", "#F3EAD8");
+            }
+          }
+        }
       } catch {
-        /* style may not expose layer */
-      }
-      try {
-        map.setPaintProperty("land", "background-color", "#F3EAD8");
-      } catch {
-        /* ignore */
-      }
-      try {
-        map.setPaintProperty("water", "fill-color", "#D9CDB3");
-      } catch {
-        /* ignore */
+        /* Style might not expose layer list — ignore and use default. */
       }
 
       // Prepare GeoJSON sources for each defined route.
@@ -123,7 +134,15 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
 
     mapRef.current = map;
 
+    // Keep the canvas in sync if the window or the flex layout resizes.
+    const ro = new ResizeObserver(() => {
+      map.resize();
+    });
+    if (containerRef.current) ro.observe(containerRef.current);
+
     return () => {
+      clearTimeout(resizeHandle);
+      ro.disconnect();
       map.remove();
       mapRef.current = null;
       setMapReady(false);
@@ -232,15 +251,8 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
             <button
               key={p}
               onClick={() => setPeriod(p)}
-              className="text-[11px] px-2 py-1 border transition-colors"
-              style={{
-                borderRadius: 2,
-                borderColor: active ? "var(--color-gold)" : "var(--color-border)",
-                background: active ? "var(--color-gold-light)" : "transparent",
-                color: active ? "var(--color-gold)" : "var(--color-ink-muted)",
-                fontFamily: "var(--font-sans)",
-                letterSpacing: "0.04em",
-              }}
+              className={`pill ${active ? "is-active" : ""}`}
+              style={{ fontSize: 11, padding: "4px 8px" }}
             >
               {p}
             </button>

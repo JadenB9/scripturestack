@@ -148,12 +148,8 @@ export function AnnotationEditor({ book, chapter, verse, existing, onClose, onCh
             <button
               key={t.value}
               onClick={() => setType(t.value)}
-              className="px-2 py-1 text-[11px] border rounded transition-colors"
-              style={{
-                borderColor: type === t.value ? "var(--color-gold)" : "var(--color-border)",
-                color: type === t.value ? "var(--color-gold)" : "var(--color-ink-muted)",
-                background: type === t.value ? "var(--color-gold-light)" : "transparent",
-              }}
+              className={`pill ${type === t.value ? "is-active" : ""}`}
+              style={{ fontSize: 11, padding: "4px 10px" }}
             >
               {t.label}
             </button>

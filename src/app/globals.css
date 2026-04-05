@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "mapbox-gl/dist/mapbox-gl.css";
 
 /*
  * ScriptureStack — design tokens
@@ -9,6 +10,7 @@
 :root {
   /* Light mode — parchment palette */
   --color-parchment: #F9F6EF;
+  --color-parchment-translucent: rgba(249, 246, 239, 0.92);
   --color-surface: #FFFFFF;
   --color-ink: #1C1917;
   --color-ink-muted: #57534E;
@@ -40,17 +42,18 @@
 }
 
 html.dark {
-  --color-parchment: #171512;
-  --color-surface: #1C1917;
+  --color-parchment: #14120F;
+  --color-parchment-translucent: rgba(20, 18, 15, 0.92);
+  --color-surface: #1E1B17;
   --color-ink: #F5F0E8;
-  --color-ink-muted: #A8A29E;
-  --color-ink-faint: #57534E;
+  --color-ink-muted: #C7BFB2;
+  --color-ink-faint: #8A8377;
   --color-gold: #D97706;
   --color-gold-light: #3B2A0E;
   --color-navy: #93C5FD;
   --color-navy-light: #1E2A3F;
-  --color-border: #292524;
-  --color-border-strong: #3F3B37;
+  --color-border: #2E2A24;
+  --color-border-strong: #413C34;
 }
 
 @theme inline {
@@ -180,15 +183,28 @@ button {
   line-height: 1.65;
 }
 
-/* Subtle word hover for lexicon interaction */
+/* Word-level lexicon — always-visible dotted underline so readers
+   can see which words they can click on for a word study. */
 .lex-word {
   cursor: pointer;
-  transition: background-color 120ms ease-out, box-shadow 120ms ease-out;
   padding: 0 1px;
+  border-bottom: 1px dotted var(--color-gold);
+  transition: background-color 120ms ease-out, border-bottom-color 120ms ease-out;
 }
 .lex-word:hover {
   background-color: var(--color-gold-light);
-  box-shadow: 0 1px 0 0 var(--color-gold);
+  border-bottom-style: solid;
+}
+
+/* Whole verses are clickable for annotations — the hover affordance
+   is a very subtle background tint so readers know something happens. */
+.verse-row {
+  cursor: pointer;
+  transition: background-color 120ms ease-out;
+  border-radius: 2px;
+}
+.verse-row:hover {
+  background-color: color-mix(in srgb, var(--color-gold) 5%, transparent);
 }
 
 /* Skeleton placeholder — no spinners, ever */
@@ -356,6 +372,59 @@ button {
 }
 .btn-ghost {
   border-color: transparent;
+  color: var(--color-ink-muted);
+}
+.btn-ghost:hover {
+  color: var(--color-gold);
+  border-color: var(--color-border-strong);
+}
+
+/* Pill toggle primitive — used for All / OT / NT and genre filters.
+   Active state is border + text color only, no background fill. */
+.pill {
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 12px;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  background: transparent;
+  color: var(--color-ink-muted);
+  border: 1px solid var(--color-border);
+  border-radius: 4px;
+  transition: color 120ms ease-out, border-color 120ms ease-out;
+  cursor: pointer;
+}
+.pill:hover {
+  color: var(--color-ink);
+  border-color: var(--color-border-strong);
+}
+.pill.is-active {
+  color: var(--color-gold);
+  border-color: var(--color-gold);
+}
+
+/* Segmented control — grouped pill buttons sharing borders */
+.segment {
+  display: inline-flex;
+  border: 1px solid var(--color-border-strong);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.segment > button {
+  padding: 6px 14px;
+  font-size: 12px;
+  font-family: var(--font-sans);
+  color: var(--color-ink-muted);
+  background: transparent;
+  border: none;
+  border-right: 1px solid var(--color-border);
+  cursor: pointer;
+  transition: color 120ms ease-out;
+}
+.segment > button:last-child { border-right: none; }
+.segment > button:hover { color: var(--color-ink); }
+.segment > button.is-active {
+  color: var(--color-gold);
 }
 
 /* Sidebar nav link */

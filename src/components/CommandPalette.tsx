@@ -17,6 +17,7 @@ const FEATURE_ITEMS: PaletteItem[] = [
   { label: "Home", href: "/", keywords: "home dashboard start", kind: "feature" },
   { label: "Books", href: "/books", keywords: "books library canon", kind: "feature" },
   { label: "Reading", href: "/read/Genesis/1", keywords: "read bible verses chapter", kind: "feature" },
+  { label: "Walkthrough", href: "/walkthrough", keywords: "walkthrough tour chronological timeline map play", kind: "feature" },
   { label: "Annotations", href: "/annotations", keywords: "annotations notes highlights tags", kind: "feature" },
   { label: "Timeline", href: "/timeline", keywords: "timeline epochs eras history covenants", kind: "feature" },
   { label: "Atlas", href: "/atlas", keywords: "atlas map locations geography", kind: "feature" },

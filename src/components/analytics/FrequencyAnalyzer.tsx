@@ -66,18 +66,12 @@ export function FrequencyAnalyzer() {
 
   return (
     <div>
-      <div className="flex items-center gap-0 border rounded overflow-hidden w-fit mb-8"
-           style={{ borderColor: "var(--color-border-strong)" }}>
+      <div className="segment w-fit mb-8">
         {(["words", "doctrine"] as const).map((t) => (
           <button
             key={t}
             onClick={() => setTab(t)}
-            className="h-9 px-5 text-[12px] transition-colors"
-            style={{
-              background: tab === t ? "var(--color-gold-light)" : "transparent",
-              color: tab === t ? "var(--color-gold)" : "var(--color-ink-muted)",
-              borderRight: t !== "doctrine" ? "1px solid var(--color-border)" : undefined,
-            }}
+            className={tab === t ? "is-active" : ""}
           >
             {t === "words" ? "Word Frequency" : "Doctrine Map"}
           </button>
