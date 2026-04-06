@@ -12,6 +12,7 @@ import {
   type Journey,
   type Period,
 } from "@/lib/data/locations";
+import { TIMELINE_EVENTS, type TimelineEvent } from "@/lib/data/timeline";
 import { detectWebGL } from "@/lib/webgl-check";
 
 type Props = {
@@ -35,12 +36,27 @@ function formatDate(year: number): string {
   return `AD ${year}`;
 }
 
+// Color per primary period — gives visual distinction on the map
+const PERIOD_COLORS: Record<Period, string> = {
+  Patriarchal: "#92400E", // brown
+  Exodus:      "#B45309", // amber
+  Conquest:    "#7F1D1D", // red
+  Monarchy:    "#1E3A5F", // navy
+  Exile:       "#6B21A8", // purple
+  NT:          "#0F766E", // teal
+  Return:      "#4D7C0F", // olive
+};
+
 function buildGeoJSON(locs: Location[]): GeoJSON.FeatureCollection {
   return {
     type: "FeatureCollection",
     features: locs.map((loc) => ({
       type: "Feature" as const,
-      properties: { id: loc.id, name: loc.name },
+      properties: {
+        id: loc.id,
+        name: loc.name,
+        period: loc.periods[0], // primary period for coloring
+      },
       geometry: { type: "Point" as const, coordinates: [loc.lon, loc.lat] },
     })),
   };
@@ -58,6 +74,7 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [journeyPanelOpen, setJourneyPanelOpen] = useState(false);
   const [periodPanelOpen, setPeriodPanelOpen] = useState(false);
+  const [timelinePanelOpen, setTimelinePanelOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
 
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
@@ -129,13 +146,18 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
     map.fitBounds([sw, ne], { padding: 80, duration: 1200 });
   }, [activeJourney, mapReady]);
 
+  const closeAllPanels = useCallback(() => {
+    setJourneyPanelOpen(false);
+    setPeriodPanelOpen(false);
+    setTimelinePanelOpen(false);
+  }, []);
+
   const selectJourney = useCallback((j: Journey | null) => {
     setActiveJourney(j);
     setSelected(null);
-    setJourneyPanelOpen(false);
-    setPeriodPanelOpen(false);
+    closeAllPanels();
     if (j) setPeriod("All");
-  }, []);
+  }, [closeAllPanels]);
 
   const selectFromSearch = useCallback((loc: Location) => {
     setSelected(loc);
@@ -143,6 +165,22 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
     const map = mapRef.current;
     if (map) map.flyTo({ center: [loc.lon, loc.lat], zoom: 8, duration: 1000 });
   }, []);
+
+  // Timeline events with atlas locations — fly to the place when selected
+  const timelineWithLocations = useMemo(
+    () => TIMELINE_EVENTS.filter((e): e is TimelineEvent & { locationId: string } => Boolean(e.locationId)),
+    [],
+  );
+
+  const selectTimelineEvent = useCallback((evt: TimelineEvent & { locationId: string }) => {
+    const loc = LOCATION_BY_ID.get(evt.locationId);
+    if (!loc) return;
+    setSelected(loc);
+    closeAllPanels();
+    selectJourney(null);
+    const map = mapRef.current;
+    if (map) map.flyTo({ center: [loc.lon, loc.lat], zoom: 7, duration: 1000 });
+  }, [closeAllPanels, selectJourney]);
 
   // Lazily load mapbox-gl and initialize the map.
   useEffect(() => {
@@ -208,7 +246,7 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
         map.on("load", () => {
           if (!map) return;
 
-          // Parchment tinting
+          // Parchment + water tinting
           try {
             const layers = map.getStyle()?.layers ?? [];
             for (const layer of layers) {
@@ -216,9 +254,15 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
                 map.setPaintProperty(layer.id, "background-color", "#F3EAD8");
               } else if (layer.type === "fill") {
                 if (/water|ocean|sea|river|lake/i.test(layer.id)) {
-                  map.setPaintProperty(layer.id, "fill-color", "#D9CDB3");
+                  // Muted blue-green water distinct from parchment land
+                  map.setPaintProperty(layer.id, "fill-color", "#B8CDD6");
                 } else if (/land|earth|landcover|landuse/i.test(layer.id)) {
                   map.setPaintProperty(layer.id, "fill-color", "#F3EAD8");
+                }
+              } else if (layer.type === "line") {
+                // Soften modern country borders so they don't dominate
+                if (/admin|boundary|border/i.test(layer.id)) {
+                  map.setPaintProperty(layer.id, "line-opacity", 0.15);
                 }
               }
             }
@@ -263,14 +307,24 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
             data: buildGeoJSON(LOCATIONS),
           });
 
-          // Circle layer — the dots
+          // Circle layer — color-coded by primary biblical period
           map.addLayer({
             id: "locations-circles",
             type: "circle",
             source: "locations",
             paint: {
               "circle-radius": 6,
-              "circle-color": "#92400E",
+              "circle-color": [
+                "match", ["get", "period"],
+                "Patriarchal", PERIOD_COLORS.Patriarchal,
+                "Exodus",      PERIOD_COLORS.Exodus,
+                "Conquest",    PERIOD_COLORS.Conquest,
+                "Monarchy",    PERIOD_COLORS.Monarchy,
+                "Exile",       PERIOD_COLORS.Exile,
+                "NT",          PERIOD_COLORS.NT,
+                "Return",      PERIOD_COLORS.Return,
+                "#92400E", // fallback
+              ],
               "circle-stroke-width": 1.5,
               "circle-stroke-color": "#FFFFFF",
             },
@@ -398,7 +452,7 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
         {/* Era/period dropdown */}
         <div className="relative">
           <button
-            onClick={() => { setPeriodPanelOpen(!periodPanelOpen); setJourneyPanelOpen(false); }}
+            onClick={() => { const next = !periodPanelOpen; closeAllPanels(); setPeriodPanelOpen(next); }}
             className={`pill ${!activeJourney && period !== "All" ? "is-active" : ""}`}
             style={{ fontSize: 11, padding: "4px 10px" }}
           >
@@ -467,7 +521,7 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
         {/* Journey dropdown */}
         <div className="relative">
           <button
-            onClick={() => { setJourneyPanelOpen(!journeyPanelOpen); setPeriodPanelOpen(false); }}
+            onClick={() => { const next = !journeyPanelOpen; closeAllPanels(); setJourneyPanelOpen(next); }}
             className={`pill ${activeJourney ? "is-active" : ""}`}
             style={{ fontSize: 11, padding: "4px 10px" }}
           >
@@ -533,6 +587,72 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
           )}
         </div>
 
+        {/* Timeline events dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => { const next = !timelinePanelOpen; closeAllPanels(); setTimelinePanelOpen(next); }}
+            className="pill"
+            style={{ fontSize: 11, padding: "4px 10px" }}
+          >
+            Timeline
+            <span style={{ marginLeft: 4, fontSize: 9 }}>▾</span>
+          </button>
+
+          {timelinePanelOpen && (
+            <div
+              className="absolute top-full left-0 mt-1 border shadow-lg"
+              style={{
+                background: "var(--color-surface)",
+                borderColor: "var(--color-border)",
+                borderRadius: 8,
+                width: 380,
+                maxHeight: 480,
+                overflowY: "auto",
+                zIndex: 50,
+              }}
+            >
+              <div className="px-3 py-2 border-b text-[10px]" style={{ borderColor: "var(--color-border)", color: "var(--color-ink-muted)" }}>
+                Events tied to locations — click to fly there
+              </div>
+              {timelineWithLocations.map((evt) => {
+                const loc = LOCATION_BY_ID.get(evt.locationId);
+                const yearStr = evt.year < 0 ? `${Math.abs(evt.year)} BC` : `AD ${evt.year}`;
+                return (
+                  <button
+                    key={evt.id}
+                    onClick={() => selectTimelineEvent(evt)}
+                    className="w-full text-left px-3 py-2 border-b last:border-b-0"
+                    style={{ borderColor: "var(--color-border)" }}
+                  >
+                    <div className="flex items-baseline gap-2">
+                      <span
+                        className="text-[10px] shrink-0 font-mono"
+                        style={{
+                          color: evt.importance === 3 ? "var(--color-gold)" : "var(--color-ink-faint)",
+                          minWidth: 52,
+                        }}
+                      >
+                        {yearStr}
+                      </span>
+                      <span className="text-[12px] font-medium" style={{ color: "var(--color-ink)" }}>
+                        {evt.name}
+                      </span>
+                    </div>
+                    <div className="text-[10px] mt-0.5 ml-[60px] leading-[1.4]" style={{ color: "var(--color-ink-muted)" }}>
+                      {evt.description.slice(0, 100)}{evt.description.length > 100 ? "…" : ""}
+                      {loc && (
+                        <span style={{ color: "var(--color-ink-faint)", marginLeft: 4 }}>
+                          — {loc.name}
+                        </span>
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
         <div style={{ width: 1, height: 20, background: "var(--color-border)" }} />
 
         {/* Location search */}
@@ -548,7 +668,7 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
               borderColor: "var(--color-border)",
               color: "var(--color-ink)",
             }}
-            onFocus={() => { setPeriodPanelOpen(false); setJourneyPanelOpen(false); }}
+            onFocus={() => closeAllPanels()}
           />
           {searchResults.length > 0 && (
             <div
