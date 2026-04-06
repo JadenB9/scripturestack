@@ -1,16 +1,22 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useRef, useState } from "react";
-// Type-only imports are erased at compile time so they never trigger
-// mapbox-gl's module-level code on the server during the initial render.
-import type { Map as MapboxMap, Marker as MapboxMarker } from "mapbox-gl";
-import { LOCATIONS, ROUTES, type Location, type Period } from "@/lib/data/locations";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Map as MapboxMap } from "mapbox-gl";
+import {
+  LOCATIONS,
+  LOCATION_BY_ID,
+  JOURNEYS,
+  PERIOD_DATES,
+  type Location,
+  type Journey,
+  type Period,
+} from "@/lib/data/locations";
 import { detectWebGL } from "@/lib/webgl-check";
 
 type Props = {
   initialLocationIds?: string[];
-  highlightRouteId?: string;
+  highlightJourneyId?: string;
 };
 
 const ALL_PERIODS: Array<Period | "All"> = [
@@ -24,42 +30,103 @@ const ALL_PERIODS: Array<Period | "All"> = [
   "Return",
 ];
 
-export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
+function formatDate(year: number): string {
+  if (year < 0) return `${Math.abs(year)} BC`;
+  return `AD ${year}`;
+}
+
+function buildGeoJSON(locs: Location[]): GeoJSON.FeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: locs.map((loc) => ({
+      type: "Feature" as const,
+      properties: { id: loc.id, name: loc.name },
+      geometry: { type: "Point" as const, coordinates: [loc.lon, loc.lat] },
+    })),
+  };
+}
+
+export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
   const containerRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<MapboxMap | null>(null);
-  const markersRef = useRef<MapboxMarker[]>([]);
-  const mapboxLibRef = useRef<typeof import("mapbox-gl") | null>(null);
   const [period, setPeriod] = useState<Period | "All">("All");
   const [selected, setSelected] = useState<Location | null>(null);
-  const [activeRoutes, setActiveRoutes] = useState<Set<string>>(
-    () => new Set(highlightRouteId ? [highlightRouteId] : []),
+  const [activeJourney, setActiveJourney] = useState<Journey | null>(
+    () => (highlightJourneyId ? JOURNEYS.find((j) => j.id === highlightJourneyId) ?? null : null),
   );
   const [mapReady, setMapReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [journeyPanelOpen, setJourneyPanelOpen] = useState(false);
 
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
+  // Compute visible locations based on period or active journey.
   const visible = useMemo(() => {
     let list = LOCATIONS;
     if (initialLocationIds && initialLocationIds.length > 0) {
       const set = new Set(initialLocationIds);
       list = list.filter((l) => set.has(l.id));
     }
-    if (period !== "All") {
+    if (activeJourney) {
+      const journeyIds = new Set(activeJourney.routeLocationIds);
+      list = list.filter((l) => journeyIds.has(l.id));
+    } else if (period !== "All") {
       list = list.filter((l) => l.periods.includes(period));
     }
     return list;
-  }, [initialLocationIds, period]);
+  }, [initialLocationIds, period, activeJourney]);
 
-  // Lazily load mapbox-gl + its CSS on the client and initialize the map.
+  // Update GeoJSON source + route visibility whenever visible or activeJourney changes.
   useEffect(() => {
-    if (!token) return;
-    if (!containerRef.current) return;
-    if (mapRef.current) return;
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
 
-    // Informational WebGL probe — logged but not used as a hard gate.
-    // We let mapbox-gl be the source of truth so false negatives in our
-    // detection don't block users whose browsers can actually render.
+    const src = map.getSource("locations") as mapboxgl.GeoJSONSource | undefined;
+    if (src) src.setData(buildGeoJSON(visible));
+
+    // Toggle journey route layers
+    for (const j of JOURNEYS) {
+      const layerId = `journey-route-${j.id}`;
+      if (!map.getLayer(layerId)) continue;
+      map.setLayoutProperty(
+        layerId,
+        "visibility",
+        activeJourney?.id === j.id ? "visible" : "none",
+      );
+    }
+  }, [visible, mapReady, activeJourney]);
+
+  // Fly to fit journey bounds when a journey is selected.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !activeJourney) return;
+
+    const coords = activeJourney.routeLocationIds
+      .map((id) => LOCATION_BY_ID.get(id))
+      .filter((l): l is Location => Boolean(l))
+      .map((l) => [l.lon, l.lat] as [number, number]);
+
+    if (coords.length < 2) return;
+
+    const lngs = coords.map((c) => c[0]);
+    const lats = coords.map((c) => c[1]);
+    const sw: [number, number] = [Math.min(...lngs), Math.min(...lats)];
+    const ne: [number, number] = [Math.max(...lngs), Math.max(...lats)];
+
+    map.fitBounds([sw, ne], { padding: 80, duration: 1200 });
+  }, [activeJourney, mapReady]);
+
+  const selectJourney = useCallback((j: Journey | null) => {
+    setActiveJourney(j);
+    setSelected(null);
+    setJourneyPanelOpen(false);
+    if (j) setPeriod("All");
+  }, []);
+
+  // Lazily load mapbox-gl and initialize the map.
+  useEffect(() => {
+    if (!token || !containerRef.current || mapRef.current) return;
+
     const webglSupport = detectWebGL();
     // eslint-disable-next-line no-console
     console.info("[atlas] webgl probe:", webglSupport);
@@ -71,13 +138,11 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
 
     (async () => {
       try {
-        // Dynamically import so mapbox-gl never runs on the server.
         const mapboxModule = await import("mapbox-gl");
         await import("mapbox-gl/dist/mapbox-gl.css");
         if (cancelled || !containerRef.current) return;
 
         const mapboxgl = mapboxModule.default;
-        mapboxLibRef.current = mapboxModule;
         mapboxgl.accessToken = token;
 
         map = new mapboxgl.Map({
@@ -86,13 +151,7 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
           center: [35.2, 31.7],
           zoom: 4,
           attributionControl: false,
-          // Explicitly allow WebGL 1 so browsers without WebGL 2 still render.
-          // Mapbox v3 prefers WebGL 2 but this flag makes it fall back cleanly.
           failIfMajorPerformanceCaveat: false,
-          // Silently rewrite telemetry URLs to a no-op data: URL so ad
-          // blockers and browser shields don't flood the console with
-          // ERR_BLOCKED_BY_CLIENT errors for every map load event.
-          // Actual map tiles, styles, and glyphs are never touched.
           transformRequest: (url) => {
             if (url.startsWith("https://events.mapbox.com/")) {
               return { url: "data:," };
@@ -104,34 +163,17 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
         map.addControl(new mapboxgl.NavigationControl({ showCompass: false }), "top-right");
         resizeHandle = setTimeout(() => map?.resize(), 150);
 
-        // Log the token prefix so a deployed build can be sanity-checked
-        // from the devtools console without exposing the full secret.
-        // eslint-disable-next-line no-console
-        console.info(
-          "[atlas] token prefix:",
-          token.slice(0, 12) + "…",
-          "length:",
-          token.length,
-        );
-
-        // Timeout: if the style never finishes loading, surface an error
-        // instead of sitting on a blank canvas forever.
         const styleTimeout = setTimeout(() => {
           if (!cancelled && !map?.isStyleLoaded()) {
-            setLoadError(
-              "Mapbox style did not load within 10 seconds. Tile requests are being blocked or the token is being rejected. Check your browser Network tab for 401/403 responses from api.mapbox.com.",
-            );
+            setLoadError("Mapbox style did not load within 10 seconds.");
           }
         }, 10000);
 
         let firstError: string | null = null;
         map.on("error", (e) => {
-          const message =
-            e?.error?.message || String(e?.error || "unknown mapbox error");
+          const message = e?.error?.message || String(e?.error || "unknown mapbox error");
           // eslint-disable-next-line no-console
-          console.warn("[atlas] mapbox error:", message, e);
-          // Capture the first error and surface it to the user so blank
-          // canvases never happen silently again.
+          console.warn("[atlas] mapbox error:", message);
           if (!firstError) {
             firstError = message;
             if (!cancelled) setLoadError(message);
@@ -140,39 +182,36 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
 
         map.once("styledata", () => {
           clearTimeout(styleTimeout);
-          // eslint-disable-next-line no-console
-          console.info("[atlas] style loaded ok");
         });
 
         map.on("load", () => {
           if (!map) return;
+
+          // Parchment tinting
           try {
-            const style = map.getStyle();
-            const layers = style?.layers ?? [];
+            const layers = map.getStyle()?.layers ?? [];
             for (const layer of layers) {
-              const id = layer.id;
               if (layer.type === "background") {
-                map.setPaintProperty(id, "background-color", "#F3EAD8");
+                map.setPaintProperty(layer.id, "background-color", "#F3EAD8");
               } else if (layer.type === "fill") {
-                if (/water|ocean|sea|river|lake/i.test(id)) {
-                  map.setPaintProperty(id, "fill-color", "#D9CDB3");
-                } else if (/land|earth|landcover|landuse/i.test(id)) {
-                  map.setPaintProperty(id, "fill-color", "#F3EAD8");
+                if (/water|ocean|sea|river|lake/i.test(layer.id)) {
+                  map.setPaintProperty(layer.id, "fill-color", "#D9CDB3");
+                } else if (/land|earth|landcover|landuse/i.test(layer.id)) {
+                  map.setPaintProperty(layer.id, "fill-color", "#F3EAD8");
                 }
               }
             }
-          } catch {
-            /* ignore tint failures */
-          }
+          } catch { /* ignore */ }
 
-          for (const route of ROUTES) {
-            const coords = route.locationIds
-              .map((id) => LOCATIONS.find((l) => l.id === id))
+          // Journey route layers (all hidden by default)
+          for (const j of JOURNEYS) {
+            const coords = j.routeLocationIds
+              .map((id) => LOCATION_BY_ID.get(id))
               .filter((l): l is Location => Boolean(l))
               .map((l) => [l.lon, l.lat] as [number, number]);
-            const sourceId = `route-${route.id}`;
-            const layerId = `route-layer-${route.id}`;
-            map.addSource(sourceId, {
+            if (coords.length < 2) continue;
+
+            map.addSource(`journey-route-${j.id}`, {
               type: "geojson",
               data: {
                 type: "Feature",
@@ -181,31 +220,84 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
               },
             });
             map.addLayer({
-              id: layerId,
+              id: `journey-route-${j.id}`,
               type: "line",
-              source: sourceId,
-              layout: {
-                "line-cap": "round",
-                "line-join": "round",
-                visibility: "none",
-              },
+              source: `journey-route-${j.id}`,
+              layout: { "line-cap": "round", "line-join": "round", visibility: "none" },
               paint: {
-                "line-color": route.color,
-                "line-width": 2,
-                "line-dasharray": [2, 2],
-                "line-opacity": 0.85,
+                "line-color": j.color,
+                "line-width": 3,
+                "line-dasharray": [3, 2],
+                "line-opacity": 0.9,
               },
             });
           }
+
+          // Canvas-based location markers via GeoJSON source + layers.
+          // These are rendered as part of the WebGL canvas, so they stay
+          // pixel-locked to their geographic coordinates during pan/zoom
+          // instead of floating like DOM markers.
+          map.addSource("locations", {
+            type: "geojson",
+            data: buildGeoJSON(LOCATIONS),
+          });
+
+          // Circle layer — the dots
+          map.addLayer({
+            id: "locations-circles",
+            type: "circle",
+            source: "locations",
+            paint: {
+              "circle-radius": 6,
+              "circle-color": "#92400E",
+              "circle-stroke-width": 1.5,
+              "circle-stroke-color": "#FFFFFF",
+            },
+          });
+
+          // Symbol layer — ancient name labels
+          map.addLayer({
+            id: "locations-labels",
+            type: "symbol",
+            source: "locations",
+            layout: {
+              "text-field": ["get", "name"],
+              "text-size": 11,
+              "text-offset": [0, 1.4],
+              "text-anchor": "top",
+              "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
+              "text-allow-overlap": false,
+              "text-optional": true,
+            },
+            paint: {
+              "text-color": "#44403C",
+              "text-halo-color": "#F3EAD8",
+              "text-halo-width": 1.5,
+            },
+          });
+
+          // Click handler for circle markers
+          map.on("click", "locations-circles", (e) => {
+            if (!e.features?.length) return;
+            const id = e.features[0].properties?.id;
+            const loc = LOCATION_BY_ID.get(id);
+            if (loc) setSelected(loc);
+          });
+
+          // Cursor style on hover
+          map.on("mouseenter", "locations-circles", () => {
+            if (map) map.getCanvas().style.cursor = "pointer";
+          });
+          map.on("mouseleave", "locations-circles", () => {
+            if (map) map.getCanvas().style.cursor = "";
+          });
 
           if (!cancelled) setMapReady(true);
         });
 
         mapRef.current = map;
 
-        ro = new ResizeObserver(() => {
-          map?.resize();
-        });
+        ro = new ResizeObserver(() => map?.resize());
         if (containerRef.current) ro.observe(containerRef.current);
       } catch (err) {
         // eslint-disable-next-line no-console
@@ -226,66 +318,6 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
     };
   }, [token]);
 
-  // Render markers whenever visible set changes.
-  useEffect(() => {
-    const map = mapRef.current;
-    const lib = mapboxLibRef.current;
-    if (!map || !mapReady || !lib) return;
-    const mapboxgl = lib.default;
-
-    for (const m of markersRef.current) m.remove();
-    markersRef.current = [];
-
-    for (const loc of visible) {
-      const el = document.createElement("button");
-      el.type = "button";
-      el.setAttribute("aria-label", loc.name);
-      el.style.width = "12px";
-      el.style.height = "12px";
-      el.style.borderRadius = "9999px";
-      el.style.background = "#92400E";
-      el.style.border = "1.5px solid #FFFFFF";
-      el.style.boxSizing = "content-box";
-      el.style.cursor = "pointer";
-      el.style.transition = "transform 120ms ease-out";
-      el.addEventListener("mouseenter", () => {
-        el.style.transform = "scale(1.35)";
-      });
-      el.addEventListener("mouseleave", () => {
-        el.style.transform = "scale(1)";
-      });
-      el.addEventListener("click", (e) => {
-        e.stopPropagation();
-        setSelected(loc);
-      });
-
-      const marker = new mapboxgl.Marker({ element: el })
-        .setLngLat([loc.lon, loc.lat])
-        .addTo(map);
-      markersRef.current.push(marker);
-    }
-
-    return () => {
-      for (const m of markersRef.current) m.remove();
-      markersRef.current = [];
-    };
-  }, [visible, mapReady]);
-
-  // Toggle route layer visibility.
-  useEffect(() => {
-    const map = mapRef.current;
-    if (!map || !mapReady) return;
-    for (const route of ROUTES) {
-      const layerId = `route-layer-${route.id}`;
-      if (!map.getLayer(layerId)) continue;
-      map.setLayoutProperty(
-        layerId,
-        "visibility",
-        activeRoutes.has(route.id) ? "visible" : "none",
-      );
-    }
-  }, [activeRoutes, mapReady]);
-
   if (!token) {
     return (
       <div
@@ -294,11 +326,7 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
       >
         <div
           className="border p-6 max-w-sm text-center"
-          style={{
-            borderColor: "var(--color-border)",
-            background: "var(--color-surface)",
-            borderRadius: 8,
-          }}
+          style={{ borderColor: "var(--color-border)", background: "var(--color-surface)", borderRadius: 8 }}
         >
           <div className="t-label mb-2">Map disabled</div>
           <p className="text-[13px]" style={{ color: "var(--color-ink-muted)" }}>
@@ -312,50 +340,26 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
   if (loadError) {
     const isWebGLError = /webgl/i.test(loadError);
     return (
-      <div
-        className="h-full w-full flex items-center justify-center px-6"
-        style={{ background: "var(--color-parchment)" }}
-      >
-        <div
-          className="border p-6 max-w-[500px] text-left"
-          style={{
-            borderColor: "var(--color-border)",
-            background: "var(--color-surface)",
-            borderRadius: 8,
-          }}
-        >
-          <div className="t-label mb-3">
-            {isWebGLError ? "WebGL could not start" : "Map failed to load"}
-          </div>
-          <p className="text-[14px] mb-3" style={{ color: "var(--color-ink)" }}>
-            {loadError}
-          </p>
+      <div className="h-full w-full flex items-center justify-center px-6" style={{ background: "var(--color-parchment)" }}>
+        <div className="border p-6 max-w-[500px] text-left" style={{ borderColor: "var(--color-border)", background: "var(--color-surface)", borderRadius: 8 }}>
+          <div className="t-label mb-3">{isWebGLError ? "WebGL could not start" : "Map failed to load"}</div>
+          <p className="text-[14px] mb-3" style={{ color: "var(--color-ink)" }}>{loadError}</p>
           {isWebGLError ? (
             <div className="text-[12px] leading-[1.7] space-y-3" style={{ color: "var(--color-ink-muted)" }}>
-              <p>
-                The Atlas renders through WebGL. Your browser knows WebGL exists
-                but refused to give Mapbox a rendering context. A few things to try:
-              </p>
+              <p>The Atlas renders through WebGL. A few things to try:</p>
               <div>
                 <strong className="block mb-1" style={{ color: "var(--color-ink)" }}>Hardware acceleration</strong>
-                Open <code>brave://settings/system</code> (or <code>chrome://settings/system</code>) and make sure
-                &quot;Use graphics acceleration when available&quot; is ON. Restart the browser after toggling.
-              </div>
-              <div>
-                <strong className="block mb-1" style={{ color: "var(--color-ink)" }}>Check your GPU</strong>
-                Open <code>brave://gpu</code>. Near the top, &quot;WebGL&quot; and &quot;WebGL2&quot; should both say
-                <em> Hardware accelerated</em>. If either says &quot;Software only&quot; or &quot;Unavailable&quot;, your
-                GPU drivers or a browser flag are blocking it.
+                Open <code>brave://settings/system</code> (or <code>chrome://settings/system</code>) and ensure
+                &quot;Use graphics acceleration when available&quot; is ON.
               </div>
               <div>
                 <strong className="block mb-1" style={{ color: "var(--color-ink)" }}>Try another browser</strong>
-                Safari, Firefox, or Chrome will tell us quickly whether it&apos;s a
-                Brave-specific block or a system-level issue.
+                Safari, Firefox, or Chrome will tell us if it&apos;s browser-specific.
               </div>
             </div>
           ) : (
             <p className="text-[11px]" style={{ color: "var(--color-ink-faint)" }}>
-              Check your Mapbox token and network connection, then reload the page.
+              Check your Mapbox token and network connection, then reload.
             </p>
           )}
         </div>
@@ -364,164 +368,271 @@ export function AtlasMap({ initialLocationIds, highlightRouteId }: Props) {
   }
 
   return (
-    <div className="absolute inset-0" style={{ background: "#F3EAD8" }}>
-      {/*
-        Use h-full/w-full (not absolute inset-0) so the container keeps a
-        definite size after mapbox-gl overrides its inline `position` to
-        `relative` during init. With `absolute inset-0`, the `relative`
-        override collapses the element to 0 height and the canvas never
-        paints tiles — the bug that made this page look blank.
-      */}
-      <div ref={containerRef} className="h-full w-full" />
-
-      {/* Period filter — top-left pill bar */}
+    <div className="absolute inset-0 flex flex-col" style={{ background: "#F3EAD8" }}>
+      {/* ── Toolbar: period pills + journey selector ── */}
       <div
-        className="absolute top-4 left-4 flex flex-wrap gap-1 p-2 border"
-        style={{
-          background: "var(--color-surface)",
-          borderColor: "var(--color-border)",
-          borderRadius: 8,
-          maxWidth: 320,
-        }}
+        className="shrink-0 flex flex-wrap items-center gap-3 px-4 py-2.5 border-b z-10"
+        style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
-        {ALL_PERIODS.map((p) => {
-          const active = period === p;
-          return (
-            <button
-              key={p}
-              onClick={() => setPeriod(p)}
-              className={`pill ${active ? "is-active" : ""}`}
-              style={{ fontSize: 11, padding: "4px 8px" }}
-            >
-              {p}
-            </button>
-          );
-        })}
-      </div>
-
-      {/* Selected location side panel */}
-      {selected && (
-        <aside
-          className="absolute top-20 left-4 w-[320px] border panel-slide"
-          style={{
-            background: "var(--color-surface)",
-            borderColor: "var(--color-border)",
-            borderRadius: 8,
-            maxHeight: "calc(100% - 120px)",
-            overflowY: "auto",
-          }}
-        >
-          <header
-            className="flex items-start justify-between gap-3 px-4 pt-4 pb-3 border-b"
-            style={{ borderColor: "var(--color-border)" }}
-          >
-            <div>
-              <div
-                className="font-serif text-[20px] leading-tight"
-                style={{ color: "var(--color-ink)" }}
-              >
-                {selected.name}
-              </div>
-              {selected.modernName && (
-                <div
-                  className="text-[12px] mt-0.5"
-                  style={{ color: "var(--color-ink-faint)" }}
-                >
-                  ({selected.modernName})
-                </div>
-              )}
-            </div>
-            <button
-              onClick={() => setSelected(null)}
-              aria-label="Close"
-              className="text-[18px] leading-none"
-              style={{ color: "var(--color-ink-muted)" }}
-            >
-              ×
-            </button>
-          </header>
-          <div className="px-4 py-3">
-            <div className="flex flex-wrap gap-1 mb-3">
-              {selected.periods.map((p) => (
-                <span key={p} className="badge badge-gold">
-                  {p}
-                </span>
-              ))}
-            </div>
-            <p
-              className="text-[13px] leading-[1.65] mb-4"
-              style={{ color: "var(--color-ink)" }}
-            >
-              {selected.description}
-            </p>
-            <div className="t-label mb-2">Passages</div>
-            <ul className="space-y-1">
-              {selected.passages.map((p, i) => (
-                <li key={i}>
-                  <Link
-                    href={`/read/${encodeURIComponent(p.book)}/${p.chapter}${
-                      p.verse ? `#v${p.verse}` : ""
-                    }`}
-                    className="font-serif text-[14px]"
-                    style={{ color: "var(--color-gold)" }}
-                  >
-                    {p.book} {p.chapter}
-                    {p.verse ? `:${p.verse}` : ""}
-                    <span style={{ marginLeft: 6 }}>→</span>
-                  </Link>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </aside>
-      )}
-
-      {/* Route legend — bottom-left */}
-      <div
-        className="absolute bottom-4 left-4 border p-3"
-        style={{
-          background: "var(--color-surface)",
-          borderColor: "var(--color-border)",
-          borderRadius: 8,
-          minWidth: 240,
-        }}
-      >
-        <div className="t-label mb-2">Routes</div>
-        <div className="flex flex-col gap-1.5">
-          {ROUTES.map((r) => {
-            const on = activeRoutes.has(r.id);
+        {/* Period pills with date labels */}
+        <div className="flex flex-wrap gap-1">
+          {ALL_PERIODS.map((p) => {
+            const active = !activeJourney && period === p;
+            const dates = p !== "All" ? PERIOD_DATES[p] : null;
             return (
               <button
-                key={r.id}
-                onClick={() => {
-                  const next = new Set(activeRoutes);
-                  if (on) next.delete(r.id);
-                  else next.add(r.id);
-                  setActiveRoutes(next);
-                }}
-                className="flex items-center gap-2 text-left"
+                key={p}
+                onClick={() => { setPeriod(p); selectJourney(null); }}
+                className={`pill ${active ? "is-active" : ""}`}
+                style={{ fontSize: 11, padding: "4px 8px" }}
+                title={dates ? dates.label : "Show all locations"}
               >
-                <span
-                  style={{
-                    display: "inline-block",
-                    width: 18,
-                    height: 0,
-                    borderTop: `2px dashed ${r.color}`,
-                    opacity: on ? 1 : 0.35,
-                  }}
-                />
-                <span
-                  className="text-[12px]"
-                  style={{
-                    color: on ? "var(--color-ink)" : "var(--color-ink-faint)",
-                  }}
-                >
-                  {r.name}
-                </span>
+                {p}
+                {dates && (
+                  <span style={{ opacity: 0.5, marginLeft: 3, fontSize: 9 }}>
+                    {dates.label.replace("c. ", "")}
+                  </span>
+                )}
               </button>
             );
           })}
         </div>
+
+        <div style={{ width: 1, height: 20, background: "var(--color-border)" }} />
+
+        {/* Journey selector */}
+        <div className="relative">
+          <button
+            onClick={() => setJourneyPanelOpen(!journeyPanelOpen)}
+            className={`pill ${activeJourney ? "is-active" : ""}`}
+            style={{ fontSize: 11, padding: "4px 10px" }}
+          >
+            {activeJourney ? activeJourney.name : "Journeys"}
+            <span style={{ marginLeft: 4, fontSize: 9 }}>▾</span>
+          </button>
+
+          {journeyPanelOpen && (
+            <div
+              className="absolute top-full left-0 mt-1 border shadow-lg"
+              style={{
+                background: "var(--color-surface)",
+                borderColor: "var(--color-border)",
+                borderRadius: 8,
+                width: 320,
+                maxHeight: 420,
+                overflowY: "auto",
+                zIndex: 50,
+              }}
+            >
+              {activeJourney && (
+                <button
+                  onClick={() => selectJourney(null)}
+                  className="w-full text-left px-3 py-2 border-b text-[11px]"
+                  style={{ borderColor: "var(--color-border)", color: "var(--color-ink-muted)" }}
+                >
+                  Clear journey — show all locations
+                </button>
+              )}
+              {JOURNEYS.map((j) => {
+                const on = activeJourney?.id === j.id;
+                return (
+                  <button
+                    key={j.id}
+                    onClick={() => selectJourney(on ? null : j)}
+                    className="w-full text-left px-3 py-2.5 border-b last:border-b-0"
+                    style={{
+                      borderColor: "var(--color-border)",
+                      background: on ? "var(--color-parchment)" : "transparent",
+                    }}
+                  >
+                    <div className="flex items-center gap-2">
+                      <span
+                        style={{
+                          display: "inline-block",
+                          width: 18,
+                          height: 0,
+                          borderTop: `2.5px dashed ${j.color}`,
+                          flexShrink: 0,
+                        }}
+                      />
+                      <span className="text-[12px] font-medium" style={{ color: "var(--color-ink)" }}>
+                        {j.name}
+                      </span>
+                    </div>
+                    <div className="text-[10px] mt-0.5 ml-[26px]" style={{ color: "var(--color-ink-faint)" }}>
+                      {j.dateLabel}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      </div>
+
+      {/* ── Map ── */}
+      <div className="flex-1 relative min-h-0">
+        {/* h-full/w-full: mapbox-gl overrides position to relative on the
+            container, so absolute+inset collapses to 0 height. */}
+        <div ref={containerRef} className="h-full w-full" />
+
+        {/* Selected location side panel */}
+        {selected && (
+          <aside
+            className="absolute top-4 left-4 w-[320px] border panel-slide"
+            style={{
+              background: "var(--color-surface)",
+              borderColor: "var(--color-border)",
+              borderRadius: 8,
+              maxHeight: "calc(100% - 32px)",
+              overflowY: "auto",
+              zIndex: 20,
+            }}
+          >
+            <header
+              className="flex items-start justify-between gap-3 px-4 pt-4 pb-3 border-b"
+              style={{ borderColor: "var(--color-border)" }}
+            >
+              <div>
+                <div className="font-serif text-[20px] leading-tight" style={{ color: "var(--color-ink)" }}>
+                  {selected.name}
+                </div>
+                {selected.modernName && (
+                  <div className="text-[12px] mt-0.5" style={{ color: "var(--color-ink-faint)" }}>
+                    {selected.modernName}
+                  </div>
+                )}
+                <div className="text-[11px] mt-1" style={{ color: "var(--color-ink-muted)" }}>
+                  {formatDate(selected.dateRange.from)} — {formatDate(selected.dateRange.to)}
+                </div>
+              </div>
+              <button
+                onClick={() => setSelected(null)}
+                aria-label="Close"
+                className="text-[18px] leading-none"
+                style={{ color: "var(--color-ink-muted)" }}
+              >
+                ×
+              </button>
+            </header>
+            <div className="px-4 py-3">
+              <div className="flex flex-wrap gap-1 mb-3">
+                {selected.periods.map((p) => (
+                  <span key={p} className="badge badge-gold">{p}</span>
+                ))}
+              </div>
+              <p className="text-[13px] leading-[1.65] mb-4" style={{ color: "var(--color-ink)" }}>
+                {selected.description}
+              </p>
+              <div className="t-label mb-2">Passages</div>
+              <ul className="space-y-1">
+                {selected.passages.map((p, i) => (
+                  <li key={i}>
+                    <Link
+                      href={`/read/${encodeURIComponent(p.book)}/${p.chapter}${p.verse ? `#v${p.verse}` : ""}`}
+                      className="font-serif text-[14px]"
+                      style={{ color: "var(--color-gold)" }}
+                    >
+                      {p.book} {p.chapter}{p.verse ? `:${p.verse}` : ""}
+                      <span style={{ marginLeft: 6 }}>→</span>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </aside>
+        )}
+
+        {/* Journey info panel — shows when a journey is active and no location is selected */}
+        {activeJourney && !selected && (
+          <aside
+            className="absolute top-4 left-4 w-[320px] border panel-slide"
+            style={{
+              background: "var(--color-surface)",
+              borderColor: "var(--color-border)",
+              borderRadius: 8,
+              maxHeight: "calc(100% - 32px)",
+              overflowY: "auto",
+              zIndex: 20,
+            }}
+          >
+            <header
+              className="flex items-start justify-between gap-3 px-4 pt-4 pb-3 border-b"
+              style={{ borderColor: "var(--color-border)" }}
+            >
+              <div>
+                <div className="font-serif text-[20px] leading-tight" style={{ color: "var(--color-ink)" }}>
+                  {activeJourney.name}
+                </div>
+                <div className="text-[11px] mt-1" style={{ color: "var(--color-ink-muted)" }}>
+                  {activeJourney.dateLabel}
+                </div>
+              </div>
+              <button
+                onClick={() => selectJourney(null)}
+                aria-label="Close"
+                className="text-[18px] leading-none"
+                style={{ color: "var(--color-ink-muted)" }}
+              >
+                ×
+              </button>
+            </header>
+            <div className="px-4 py-3">
+              <p className="text-[13px] leading-[1.65] mb-4" style={{ color: "var(--color-ink)" }}>
+                {activeJourney.description}
+              </p>
+
+              {/* Route stops */}
+              <div className="t-label mb-2">Stops</div>
+              <div className="flex flex-col gap-1 mb-4">
+                {activeJourney.routeLocationIds
+                  .filter((id, idx, arr) => arr.indexOf(id) === idx) // dedupe for display
+                  .map((id) => {
+                    const loc = LOCATION_BY_ID.get(id);
+                    if (!loc) return null;
+                    return (
+                      <button
+                        key={id}
+                        onClick={() => setSelected(loc)}
+                        className="text-left text-[12px] py-0.5 flex items-center gap-2"
+                        style={{ color: "var(--color-ink)" }}
+                      >
+                        <span
+                          style={{
+                            width: 6,
+                            height: 6,
+                            borderRadius: "50%",
+                            background: activeJourney.color,
+                            flexShrink: 0,
+                          }}
+                        />
+                        {loc.name}
+                        {loc.modernName && (
+                          <span style={{ color: "var(--color-ink-faint)", fontSize: 10 }}>
+                            ({loc.modernName.split(",")[0]})
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+              </div>
+
+              <div className="t-label mb-2">Key Passages</div>
+              <ul className="space-y-2">
+                {activeJourney.keyPassages.map((p, i) => (
+                  <li key={i}>
+                    <div className="font-serif text-[13px]" style={{ color: "var(--color-gold)" }}>
+                      {p.ref}
+                    </div>
+                    <div className="text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
+                      {p.label}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </aside>
+        )}
       </div>
     </div>
   );
