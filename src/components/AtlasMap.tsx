@@ -57,8 +57,21 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
   const [mapReady, setMapReady] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [journeyPanelOpen, setJourneyPanelOpen] = useState(false);
+  const [periodPanelOpen, setPeriodPanelOpen] = useState(false);
+  const [searchQuery, setSearchQuery] = useState("");
 
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
+
+  // Search results filtered by query
+  const searchResults = useMemo(() => {
+    if (!searchQuery.trim()) return [];
+    const q = searchQuery.toLowerCase();
+    return LOCATIONS.filter(
+      (l) =>
+        l.name.toLowerCase().includes(q) ||
+        (l.modernName && l.modernName.toLowerCase().includes(q)),
+    ).slice(0, 8);
+  }, [searchQuery]);
 
   // Compute visible locations based on period or active journey.
   const visible = useMemo(() => {
@@ -120,7 +133,15 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
     setActiveJourney(j);
     setSelected(null);
     setJourneyPanelOpen(false);
+    setPeriodPanelOpen(false);
     if (j) setPeriod("All");
+  }, []);
+
+  const selectFromSearch = useCallback((loc: Location) => {
+    setSelected(loc);
+    setSearchQuery("");
+    const map = mapRef.current;
+    if (map) map.flyTo({ center: [loc.lon, loc.lat], zoom: 8, duration: 1000 });
   }, []);
 
   // Lazily load mapbox-gl and initialize the map.
@@ -369,41 +390,65 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
 
   return (
     <div className="absolute inset-0 flex flex-col" style={{ background: "#F3EAD8" }}>
-      {/* ── Toolbar: period pills + journey selector ── */}
+      {/* ── Toolbar: era dropdown + journey dropdown + search ── */}
       <div
-        className="shrink-0 flex flex-wrap items-center gap-3 px-4 py-2.5 border-b z-10"
+        className="shrink-0 flex items-center gap-2 px-4 py-2 border-b z-10"
         style={{ background: "var(--color-surface)", borderColor: "var(--color-border)" }}
       >
-        {/* Period pills with date labels */}
-        <div className="flex flex-wrap gap-1">
-          {ALL_PERIODS.map((p) => {
-            const active = !activeJourney && period === p;
-            const dates = p !== "All" ? PERIOD_DATES[p] : null;
-            return (
-              <button
-                key={p}
-                onClick={() => { setPeriod(p); selectJourney(null); }}
-                className={`pill ${active ? "is-active" : ""}`}
-                style={{ fontSize: 11, padding: "4px 8px" }}
-                title={dates ? dates.label : "Show all locations"}
-              >
-                {p}
-                {dates && (
-                  <span style={{ opacity: 0.5, marginLeft: 3, fontSize: 9 }}>
-                    {dates.label.replace("c. ", "")}
-                  </span>
-                )}
-              </button>
-            );
-          })}
-        </div>
-
-        <div style={{ width: 1, height: 20, background: "var(--color-border)" }} />
-
-        {/* Journey selector */}
+        {/* Era/period dropdown */}
         <div className="relative">
           <button
-            onClick={() => setJourneyPanelOpen(!journeyPanelOpen)}
+            onClick={() => { setPeriodPanelOpen(!periodPanelOpen); setJourneyPanelOpen(false); }}
+            className={`pill ${!activeJourney && period !== "All" ? "is-active" : ""}`}
+            style={{ fontSize: 11, padding: "4px 10px" }}
+          >
+            {period !== "All" ? `${period} · ${PERIOD_DATES[period].label}` : "Era"}
+            <span style={{ marginLeft: 4, fontSize: 9 }}>▾</span>
+          </button>
+
+          {periodPanelOpen && (
+            <div
+              className="absolute top-full left-0 mt-1 border shadow-lg"
+              style={{
+                background: "var(--color-surface)",
+                borderColor: "var(--color-border)",
+                borderRadius: 8,
+                width: 260,
+                zIndex: 50,
+              }}
+            >
+              {ALL_PERIODS.map((p) => {
+                const active = !activeJourney && period === p;
+                const dates = p !== "All" ? PERIOD_DATES[p] : null;
+                return (
+                  <button
+                    key={p}
+                    onClick={() => { setPeriod(p); selectJourney(null); setPeriodPanelOpen(false); }}
+                    className="w-full text-left px-3 py-2 border-b last:border-b-0"
+                    style={{
+                      borderColor: "var(--color-border)",
+                      background: active ? "var(--color-parchment)" : "transparent",
+                    }}
+                  >
+                    <span className="text-[12px] font-medium" style={{ color: "var(--color-ink)" }}>
+                      {p === "All" ? "All Eras" : p}
+                    </span>
+                    {dates && (
+                      <span className="text-[10px] ml-2" style={{ color: "var(--color-ink-faint)" }}>
+                        {dates.label}
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+        </div>
+
+        {/* Journey dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => { setJourneyPanelOpen(!journeyPanelOpen); setPeriodPanelOpen(false); }}
             className={`pill ${activeJourney ? "is-active" : ""}`}
             style={{ fontSize: 11, padding: "4px 10px" }}
           >
@@ -465,6 +510,54 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
                   </button>
                 );
               })}
+            </div>
+          )}
+        </div>
+
+        <div style={{ width: 1, height: 20, background: "var(--color-border)" }} />
+
+        {/* Location search */}
+        <div className="relative flex-1 max-w-[260px]">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search locations..."
+            className="w-full text-[12px] px-3 py-1.5 border rounded-md outline-none"
+            style={{
+              background: "var(--color-parchment)",
+              borderColor: "var(--color-border)",
+              color: "var(--color-ink)",
+            }}
+            onFocus={() => { setPeriodPanelOpen(false); setJourneyPanelOpen(false); }}
+          />
+          {searchResults.length > 0 && (
+            <div
+              className="absolute top-full left-0 right-0 mt-1 border shadow-lg"
+              style={{
+                background: "var(--color-surface)",
+                borderColor: "var(--color-border)",
+                borderRadius: 8,
+                zIndex: 50,
+              }}
+            >
+              {searchResults.map((loc) => (
+                <button
+                  key={loc.id}
+                  onClick={() => selectFromSearch(loc)}
+                  className="w-full text-left px-3 py-2 border-b last:border-b-0"
+                  style={{ borderColor: "var(--color-border)" }}
+                >
+                  <div className="text-[12px] font-medium" style={{ color: "var(--color-ink)" }}>
+                    {loc.name}
+                  </div>
+                  {loc.modernName && (
+                    <div className="text-[10px]" style={{ color: "var(--color-ink-faint)" }}>
+                      {loc.modernName}
+                    </div>
+                  )}
+                </button>
+              ))}
             </div>
           )}
         </div>
