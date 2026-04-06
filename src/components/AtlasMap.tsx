@@ -413,30 +413,49 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
                 background: "var(--color-surface)",
                 borderColor: "var(--color-border)",
                 borderRadius: 8,
-                width: 260,
+                width: 360,
+                maxHeight: 480,
+                overflowY: "auto",
                 zIndex: 50,
               }}
             >
               {ALL_PERIODS.map((p) => {
                 const active = !activeJourney && period === p;
-                const dates = p !== "All" ? PERIOD_DATES[p] : null;
+                const info = p !== "All" ? PERIOD_DATES[p] : null;
                 return (
                   <button
                     key={p}
                     onClick={() => { setPeriod(p); selectJourney(null); setPeriodPanelOpen(false); }}
-                    className="w-full text-left px-3 py-2 border-b last:border-b-0"
+                    className="w-full text-left px-3 py-2.5 border-b last:border-b-0"
                     style={{
                       borderColor: "var(--color-border)",
                       background: active ? "var(--color-parchment)" : "transparent",
                     }}
                   >
-                    <span className="text-[12px] font-medium" style={{ color: "var(--color-ink)" }}>
-                      {p === "All" ? "All Eras" : p}
-                    </span>
-                    {dates && (
-                      <span className="text-[10px] ml-2" style={{ color: "var(--color-ink-faint)" }}>
-                        {dates.label}
+                    <div className="flex items-baseline gap-2">
+                      <span className="text-[12px] font-medium" style={{ color: "var(--color-ink)" }}>
+                        {p === "All" ? "All Eras" : p}
                       </span>
+                      {info && (
+                        <span className="text-[10px]" style={{ color: "var(--color-ink-faint)" }}>
+                          {info.label}
+                        </span>
+                      )}
+                    </div>
+                    {info && (
+                      <>
+                        <div className="text-[10px] mt-0.5" style={{ color: "var(--color-gold)" }}>
+                          {info.books}
+                        </div>
+                        <div className="text-[10px] mt-0.5 leading-[1.4]" style={{ color: "var(--color-ink-muted)" }}>
+                          {info.description}
+                        </div>
+                      </>
+                    )}
+                    {p === "All" && (
+                      <div className="text-[10px] mt-0.5" style={{ color: "var(--color-ink-muted)" }}>
+                        Show all locations across every era
+                      </div>
                     )}
                   </button>
                 );

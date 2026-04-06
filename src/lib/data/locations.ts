@@ -15,14 +15,14 @@ export type Period =
   | "NT"
   | "Return";
 
-export const PERIOD_DATES: Record<Period, { from: number; to: number; label: string }> = {
-  Patriarchal: { from: -2100, to: -1800, label: "c. 2100–1800 BC" },
-  Exodus:      { from: -1446, to: -1406, label: "c. 1446–1406 BC" },
-  Conquest:    { from: -1406, to: -1050, label: "c. 1406–1050 BC" },
-  Monarchy:    { from: -1050, to: -586,  label: "c. 1050–586 BC" },
-  Exile:       { from: -586,  to: -538,  label: "c. 586–538 BC" },
-  Return:      { from: -538,  to: -400,  label: "c. 538–400 BC" },
-  NT:          { from: -5,    to: 100,   label: "c. 5 BC – AD 100" },
+export const PERIOD_DATES: Record<Period, { from: number; to: number; label: string; books: string; description: string }> = {
+  Patriarchal: { from: -2100, to: -1800, label: "c. 2100–1800 BC", books: "Genesis 12–50", description: "Abraham, Isaac, Jacob, and Joseph — God's covenant promises and the birth of the nation of Israel." },
+  Exodus:      { from: -1446, to: -1406, label: "c. 1446–1406 BC", books: "Exodus – Deuteronomy", description: "Deliverance from Egypt, the Law at Sinai, and 40 years of wilderness wandering under Moses." },
+  Conquest:    { from: -1406, to: -1050, label: "c. 1406–1050 BC", books: "Joshua – Judges – Ruth", description: "Taking the Promised Land under Joshua, then cycles of rebellion and deliverance under the judges." },
+  Monarchy:    { from: -1050, to: -586,  label: "c. 1050–586 BC",  books: "1 Samuel – 2 Chronicles, Prophets", description: "The united kingdom under Saul, David, and Solomon, then the divided kingdoms of Israel and Judah until the fall of Jerusalem." },
+  Exile:       { from: -586,  to: -538,  label: "c. 586–538 BC",   books: "Daniel, Ezekiel, Lamentations", description: "Judah in Babylonian captivity — Daniel in the lion's den, Ezekiel's visions, and mourning for Jerusalem." },
+  Return:      { from: -538,  to: -400,  label: "c. 538–400 BC",   books: "Ezra, Nehemiah, Esther, Haggai, Malachi", description: "Return from Babylon, rebuilding the temple and walls of Jerusalem, and the last voices of the Old Testament prophets." },
+  NT:          { from: -5,    to: 100,   label: "c. 5 BC – AD 100", books: "Matthew – Revelation", description: "The life of Jesus, the early church, Paul's letters, and John's Revelation — the new covenant fulfilled." },
 };
 
 export type Location = {
