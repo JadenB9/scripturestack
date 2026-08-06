@@ -392,9 +392,11 @@ export function MacroTimeline() {
       </div>
 
       {/* Chart wrapper */}
+      {/* The chart keeps a 600px floor to stay readable, so on narrow screens
+          it scrolls inside this box rather than dragging the page with it. */}
       <div
         ref={wrapRef}
-        className="relative border"
+        className="relative border overflow-x-auto"
         style={{
           borderColor: "var(--color-border)",
           background: "var(--color-surface)",
@@ -434,7 +436,7 @@ export function MacroTimeline() {
       </div>
 
       {/* Legend */}
-      <div className="flex items-center gap-4 mt-4 text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
+      <div className="flex flex-wrap items-center gap-x-4 gap-y-2 mt-4 text-[11px]" style={{ color: "var(--color-ink-muted)" }}>
         <span className="inline-flex items-center gap-1.5">
           <span
             className="inline-block"

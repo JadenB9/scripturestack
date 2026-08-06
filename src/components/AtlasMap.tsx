@@ -416,7 +416,7 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
     const isWebGLError = /webgl/i.test(loadError);
     return (
       <div className="h-full w-full flex items-center justify-center px-6" style={{ background: "var(--color-parchment)" }}>
-        <div className="border p-6 max-w-[500px] text-left" style={{ borderColor: "var(--color-border)", background: "var(--color-surface)", borderRadius: 8 }}>
+        <div className="border p-6 w-full max-w-[500px] text-left break-words" style={{ borderColor: "var(--color-border)", background: "var(--color-surface)", borderRadius: 8 }}>
           <div className="t-label mb-3">{isWebGLError ? "WebGL could not start" : "Map failed to load"}</div>
           <p className="text-[14px] mb-3" style={{ color: "var(--color-ink)" }}>{loadError}</p>
           {isWebGLError ? (
