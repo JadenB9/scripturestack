@@ -103,6 +103,12 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "query is required" }, { status: 400 });
   }
 
+  // Mirror the ML service's own 2000-char cap so an oversized body is
+  // rejected here instead of after a round trip to Railway.
+  if (query.length > 2000) {
+    return NextResponse.json({ error: "query is too long (max 2000 characters)" }, { status: 400 });
+  }
+
   const mlUrl = process.env.ML_API_URL;
   if (!mlUrl) {
     return NextResponse.json({ error: "ML_API_URL not configured" }, { status: 500 });
@@ -113,7 +119,10 @@ export async function POST(req: Request) {
   try {
     const res = await fetch(`${mlUrl.replace(/\/$/, "")}/embed`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(process.env.ML_API_KEY ? { "X-API-Key": process.env.ML_API_KEY } : {}),
+      },
       body: JSON.stringify({ texts: [query] }),
       signal: AbortSignal.timeout(30000),
     });
@@ -121,10 +130,9 @@ export async function POST(req: Request) {
     const data = (await res.json()) as { embeddings: number[][] };
     embedding = data.embeddings[0];
   } catch (err) {
-    return NextResponse.json(
-      { error: "embedding failed", detail: err instanceof Error ? err.message : String(err) },
-      { status: 502 },
-    );
+    // Detail goes to the server log only — it can name the internal ML host.
+    console.error("embedding failed", err);
+    return NextResponse.json({ error: "embedding failed" }, { status: 502 });
   }
 
   // 2. Wide candidate pool — we'll trim with MMR below. Cast the vector to

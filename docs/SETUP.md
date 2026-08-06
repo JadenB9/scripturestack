@@ -132,15 +132,17 @@ The app runs at `http://localhost:3000`. It'll hit the production Neon database 
 
 ## Redeploying
 
-Production redeploys on every push to `main` on either repo:
-- `JadenB9/scripturestack:main` → Vercel
-- `JadenB9/scripturestack-ml:main` → Railway
+- `JadenB9/scripturestack:main` → Vercel, auto-deploys on push to `main`.
+- `JadenB9/scripturestack-ml` → Railway, **not** connected to GitHub. Pushing
+  does nothing; the service only updates when you upload from your machine.
 
-Manual redeploy if needed:
 ```bash
-vercel deploy --prod     # frontend
-railway up                # ML service (from scripturestack-ml/)
+vercel deploy --prod      # frontend
+railway up                # ML service (from scripturestack-ml/) — required, not optional
 ```
+
+Check with `railway status`: the frontend-style Git link shows a `repo:` line.
+The ML service has none, which is how you know a push won't reach it.
 
 ## Rotating secrets
 
