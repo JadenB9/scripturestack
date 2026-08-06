@@ -31,7 +31,7 @@ Scripture Stack is a three-tier application: a Next.js frontend on Vercel, a Pos
 | Repo | Purpose | Host |
 |---|---|---|
 | `JadenB9/scripturestack` | Next.js frontend + API routes + seed scripts | Vercel (auto-deploy on push to `main`) |
-| `JadenB9/scripturestack-ml` | Python FastAPI ML service (embeddings) | Railway (auto-deploy on push to `main`) |
+| `JadenB9/scripturestack-ml` | Python FastAPI ML service (embeddings) | Railway (**no Git link — deploy with `railway up`**) |
 | `JadenB9/j4den` | Homepage tile that links to the subdomain | Cloudflare Pages |
 
 ## Request flow — semantic search

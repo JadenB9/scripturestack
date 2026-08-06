@@ -8,7 +8,7 @@ import { db } from "@/db/client";
  * GET /api/health
  */
 export async function GET() {
-  const checks: Record<string, { ok: boolean; detail?: string }> = {
+  const checks: Record<string, { ok: boolean }> = {
     database: { ok: false },
     ml: { ok: false },
   };
@@ -18,7 +18,9 @@ export async function GET() {
     await db.execute(sql`select 1`);
     checks.database.ok = true;
   } catch (err) {
-    checks.database.detail = err instanceof Error ? err.message : String(err);
+    // This endpoint is public, and driver errors name the database host —
+    // so the reason goes to the server log, not the response body.
+    console.error("health: database check failed", err);
   }
 
   // Railway ML service
@@ -31,7 +33,7 @@ export async function GET() {
     if (!res.ok) throw new Error(`ML service returned ${res.status}`);
     checks.ml.ok = true;
   } catch (err) {
-    checks.ml.detail = err instanceof Error ? err.message : String(err);
+    console.error("health: ml check failed", err);
   }
 
   const allOk = Object.values(checks).every((c) => c.ok);
