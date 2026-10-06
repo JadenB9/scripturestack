@@ -297,10 +297,9 @@ function WordFrequencyTab() {
                       <p
                         className="font-serif text-[14px] mt-1 leading-[1.6]"
                         style={{ color: "var(--color-ink)" }}
-                        dangerouslySetInnerHTML={{
-                          __html: highlightWord(s.text, selectedWord.word),
-                        }}
-                      />
+                      >
+                        {highlightWord(s.text, selectedWord.word)}
+                      </p>
                     </li>
                   ))}
                 </ul>
@@ -340,14 +339,19 @@ function WordFrequencyTab() {
   );
 }
 
-function highlightWord(text: string, word: string): string {
-  const escaped = text.replace(/[&<>"']/g, (c) =>
-    c === "&" ? "&amp;" : c === "<" ? "&lt;" : c === ">" ? "&gt;" : c === '"' ? "&quot;" : "&#39;",
-  );
-  const re = new RegExp(`\\b(${word})\\b`, "gi");
-  return escaped.replace(
-    re,
-    '<mark style="background: var(--color-gold-light); color: var(--color-gold); padding: 0 2px;">$1</mark>',
+// Wraps whole-word matches in <mark>. Builds React nodes rather than an HTML
+// string so the verse text never goes through innerHTML.
+function highlightWord(text: string, word: string): React.ReactNode {
+  const safe = word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const parts = text.split(new RegExp(`\\b(${safe})\\b`, "gi"));
+  return parts.map((part, i) =>
+    i % 2 === 1 ? (
+      <mark key={i} style={{ background: "var(--color-gold-light)", color: "var(--color-gold)", padding: "0 2px" }}>
+        {part}
+      </mark>
+    ) : (
+      part
+    )
   );
 }
 
@@ -657,8 +661,9 @@ function DoctrineMapTab() {
                   <p
                     className="font-serif text-[13px] mt-1 leading-[1.55]"
                     style={{ color: "var(--color-ink)" }}
-                    dangerouslySetInnerHTML={{ __html: highlightWord(s.text, s.matchedKeyword) }}
-                  />
+                  >
+                    {highlightWord(s.text, s.matchedKeyword)}
+                  </p>
                 </li>
               ))}
             </ul>
