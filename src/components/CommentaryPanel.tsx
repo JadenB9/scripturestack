@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { CommentaryEntry, CommentarySource } from "@/lib/data/commentary";
+import { PANEL_CLASS } from "./TranslationPanel";
 
 type Props = {
   book: string;
@@ -31,15 +32,16 @@ export function CommentaryPanel({ book, chapter, onClose }: Props) {
 
   return (
     <aside
-      className="hidden lg:flex sticky top-14 shrink-0 w-[340px] h-[calc(100vh-56px)] border-l flex-col panel-slide"
+      className={`${PANEL_CLASS} lg:w-[340px]`}
+      aria-label="Commentary"
       style={{
         background: "var(--color-surface)",
         borderColor: "var(--color-border)",
       }}
     >
-      <header className="flex items-center justify-between px-4 h-12 border-b" style={{ borderColor: "var(--color-border)" }}>
+      <header className="flex items-center justify-between px-4 h-12 border-b shrink-0" style={{ borderColor: "var(--color-border)" }}>
         <span className="t-label">Commentary</span>
-        <button onClick={onClose} aria-label="Close" style={{ color: "var(--color-ink-muted)" }}>
+        <button onClick={onClose} aria-label="Close commentary" className="px-1 text-[18px] leading-none" style={{ color: "var(--color-ink-muted)" }}>
           ×
         </button>
       </header>
@@ -49,6 +51,7 @@ export function CommentaryPanel({ book, chapter, onClose }: Props) {
           <button
             key={s.value}
             onClick={() => setSource(s.value)}
+            aria-pressed={source === s.value}
             className="text-[11px] px-2 py-1 rounded transition-colors"
             style={{
               background: source === s.value ? "var(--color-gold-light)" : "transparent",

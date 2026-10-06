@@ -201,6 +201,8 @@ button {
   cursor: pointer;
   transition: background-color 120ms ease-out;
   border-radius: 2px;
+  /* Keep #v16-style anchors clear of the sticky reading header */
+  scroll-margin-top: 160px;
 }
 .verse-row:hover {
   background-color: color-mix(in srgb, var(--color-gold) 5%, transparent);
@@ -481,4 +483,15 @@ button {
 ::selection {
   background: var(--color-gold-light);
   color: var(--color-ink);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
 }

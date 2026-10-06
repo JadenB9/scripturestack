@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";
 import { VerseBlock, type VerseData } from "./VerseBlock";
 import { ChapterTimeline } from "./ChapterTimeline";
@@ -38,6 +39,7 @@ export function ReadingView({
   const [highlightVerse, setHighlightVerse] = useState<number | null>(null);
   const [variantVerse, setVariantVerse] = useState<number | null>(null);
   const [fontSize, setFontSize] = useState<"sm" | "md" | "lg">("md");
+  const router = useRouter();
 
   const refreshAnnotations = useCallback(() => {
     setAnnotations(listForChapter(book, chapter));
@@ -51,21 +53,36 @@ export function ReadingView({
     return () => window.removeEventListener("ss-annotations-updated", handler);
   }, [book, chapter, refreshAnnotations]);
 
-  // Keyboard navigation: left/right arrows for prev/next chapter
+  // Keyboard navigation: left/right arrows for prev/next chapter, Escape
+  // closes whichever side panel is open.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
-      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+      if (["INPUT", "TEXTAREA", "SELECT"].includes(target.tagName) || target.isContentEditable) return;
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.key === "Escape") setPanel("none");
       if (e.key === "ArrowLeft" && prev) {
-        window.location.href = `/read/${encodeURIComponent(prev.book)}/${prev.chapter}`;
+        router.push(`/read/${encodeURIComponent(prev.book)}/${prev.chapter}`);
       }
       if (e.key === "ArrowRight" && next) {
-        window.location.href = `/read/${encodeURIComponent(next.book)}/${next.chapter}`;
+        router.push(`/read/${encodeURIComponent(next.book)}/${next.chapter}`);
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [prev, next]);
+  }, [prev, next, router]);
+
+  // Coming in from a link like /read/John/3#v16: flash that verse so it's
+  // easy to spot under the sticky header.
+  useEffect(() => {
+    const m = window.location.hash.match(/^#v(\d+)$/);
+    if (!m) return;
+    const n = Number(m[1]);
+    document.getElementById(`v${n}`)?.scrollIntoView({ block: "center" });
+    setHighlightVerse(n);
+    const t = setTimeout(() => setHighlightVerse(null), 1500);
+    return () => clearTimeout(t);
+  }, [book, chapter]);
 
   const handleJump = useCallback((verseNumber: number) => {
     const el = document.getElementById(`v${verseNumber}`);
@@ -88,7 +105,7 @@ export function ReadingView({
           borderColor: "var(--color-border)",
         }}
       >
-        <div className="max-w-[1080px] mx-auto px-6 md:px-10 h-14 flex items-center gap-4">
+        <div className="max-w-[1080px] mx-auto px-4 md:px-10 min-h-14 py-2 flex flex-wrap items-center gap-x-4 gap-y-1">
           <Link
             href="/books"
             className="text-[12px]"
@@ -114,12 +131,14 @@ export function ReadingView({
             </button>
             <button
               onClick={() => setPanel(panel === "translation" ? "none" : "translation")}
+              aria-pressed={panel === "translation"}
               className="btn btn-ghost"
             >
               Translations
             </button>
             <button
               onClick={() => setPanel(panel === "commentary" ? "none" : "commentary")}
+              aria-pressed={panel === "commentary"}
               className="btn btn-ghost"
             >
               Commentary
@@ -129,6 +148,7 @@ export function ReadingView({
               {prev ? (
                 <Link
                   href={`/read/${encodeURIComponent(prev.book)}/${prev.chapter}`}
+                  aria-label={`Previous chapter: ${prev.book} ${prev.chapter}`}
                   className="px-3 h-8 flex items-center text-[12px] border-r"
                   style={{ color: "var(--color-ink-muted)", borderColor: "var(--color-border)" }}
                 >
@@ -140,6 +160,7 @@ export function ReadingView({
               {next ? (
                 <Link
                   href={`/read/${encodeURIComponent(next.book)}/${next.chapter}`}
+                  aria-label={`Next chapter: ${next.book} ${next.chapter}`}
                   className="px-3 h-8 flex items-center text-[12px]"
                   style={{ color: "var(--color-ink-muted)" }}
                 >
@@ -167,7 +188,7 @@ export function ReadingView({
       <div className="flex-1 flex">
         {/* Main reading column */}
         <div className="flex-1 min-w-0">
-          <article className="max-w-[680px] mx-auto px-6 md:px-10 py-10">
+          <article className="max-w-[680px] mx-auto px-5 md:px-10 py-10">
             {verses.length === 0 && (
               <div className="py-20 text-center">
                 <p className="t-label mb-3">Not yet indexed</p>

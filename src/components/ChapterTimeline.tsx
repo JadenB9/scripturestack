@@ -32,7 +32,9 @@ type Props = {
 export function ChapterTimeline({ events, book, chapter, onJumpToVerse }: Props) {
   const svgRef = useRef<SVGSVGElement>(null);
   const [harmony, setHarmony] = useState(false);
-  const [width, setWidth] = useState(800);
+  // 0 until the ResizeObserver measures us — starting at a guessed 800px made
+  // the page wider than a phone screen for the first frame.
+  const [width, setWidth] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const isGospel = ["Matthew", "Mark", "Luke", "John"].includes(book);
@@ -62,7 +64,7 @@ export function ChapterTimeline({ events, book, chapter, onJumpToVerse }: Props)
   }, []);
 
   useEffect(() => {
-    if (!svgRef.current || events.length === 0) return;
+    if (!svgRef.current || events.length === 0 || width === 0) return;
     const svg = d3.select(svgRef.current);
     svg.selectAll("*").remove();
 
@@ -79,10 +81,16 @@ export function ChapterTimeline({ events, book, chapter, onJumpToVerse }: Props)
       .domain([1, maxVerse])
       .range([margin.left, width - margin.right]);
 
-    // Axis (verse numbers) — subtle ticks at quarters
+    // Axis (verse numbers) — subtle ticks every 5 verses, every 10 on phones
+    const tickStep = width < 500 ? 10 : 5;
     const axis = d3
       .axisBottom(x)
-      .tickValues(d3.range(5, maxVerse, 5).concat([maxVerse]))
+      .tickValues(
+        d3
+          .range(tickStep, maxVerse, tickStep)
+          .filter((v) => maxVerse - v >= tickStep / 2) // don't crowd the last tick
+          .concat([maxVerse])
+      )
       .tickSize(3)
       .tickFormat((d) => `${d}`);
 
@@ -116,7 +124,23 @@ export function ChapterTimeline({ events, book, chapter, onJumpToVerse }: Props)
       .attr("stroke", "var(--color-parchment)")
       .attr("stroke-width", 1.5);
 
+    mainRow.append("title").text((d) => `${d.title} (v${d.verseStart}–${d.verseEnd})`);
+
+    // Labels are ~80px wide, so on narrow screens skip any that would land on
+    // top of the previous one. The dot (and its tooltip) is still there.
+    const LABEL_GAP = 84;
+    let lastLabelX = -Infinity;
+    const showLabel = new Set<ChapterEvent>();
+    for (const e of [...events].sort((p, q) => p.verseStart - q.verseStart)) {
+      const ex = x((e.verseStart + e.verseEnd) / 2);
+      if (ex - lastLabelX >= LABEL_GAP) {
+        showLabel.add(e);
+        lastLabelX = ex;
+      }
+    }
+
     mainRow
+      .filter((d) => showLabel.has(d))
       .append("text")
       .attr("y", 16)
       .attr("text-anchor", "middle")
