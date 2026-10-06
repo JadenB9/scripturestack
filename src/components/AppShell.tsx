@@ -39,7 +39,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>
       <ShellContext.Provider value={{ openCommand, closeCommand, isCommandOpen: cmdOpen }}>
-        <div className="flex min-h-screen" style={{ background: "var(--color-parchment)" }}>
+        <div className="flex flex-col md:flex-row min-h-screen" style={{ background: "var(--color-parchment)" }}>
           <Sidebar />
           <main className="flex-1 min-w-0">{children}</main>
           <CommandPalette />

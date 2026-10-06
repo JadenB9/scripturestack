@@ -64,6 +64,15 @@ export function Sidebar() {
     setMobileOpen(false);
   }, [pathname]);
 
+  useEffect(() => {
+    if (!mobileOpen) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setMobileOpen(false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [mobileOpen]);
+
   return (
     <>
       {/* Mobile header */}
@@ -77,6 +86,7 @@ export function Sidebar() {
         <button
           onClick={() => setMobileOpen(true)}
           aria-label="Open navigation"
+          aria-expanded={mobileOpen}
           className="p-2"
           style={{ color: "var(--color-ink-muted)" }}
         >
@@ -88,8 +98,9 @@ export function Sidebar() {
       <aside
         className={[
           "fixed md:sticky top-0 left-0 z-40 h-screen w-[240px] shrink-0 border-r flex flex-col",
-          mobileOpen ? "translate-x-0" : "-translate-x-full md:translate-x-0",
-          "transition-transform duration-300",
+          // invisible while closed on mobile so the off-screen links can't be tabbed into
+          mobileOpen ? "translate-x-0 visible" : "-translate-x-full invisible md:visible md:translate-x-0",
+          "transition-[transform,visibility] duration-300",
         ].join(" ")}
         style={{
           background: "var(--color-parchment)",
