@@ -118,43 +118,47 @@ body {
   border-radius: 2px;
 }
 
-/* Inputs — bottom border only */
-input[type="text"],
-input[type="search"],
-input[type="email"],
-textarea,
-select {
-  background: transparent;
-  color: var(--color-ink);
-  border: none;
-  border-bottom: 1px solid var(--color-border);
-  padding: 8px 2px;
-  width: 100%;
-  font-family: var(--font-sans);
-  font-size: 14px;
-  transition: border-color 150ms ease-out;
-}
-input[type="text"]:focus,
-input[type="search"]:focus,
-input[type="email"]:focus,
-textarea:focus,
-select:focus {
-  border-bottom-color: var(--color-gold);
-  outline: none;
-}
-input::placeholder,
-textarea::placeholder {
-  color: var(--color-ink-faint);
-}
+/* Form element baselines live in the base layer so Tailwind utilities on a
+   specific element (px-3, border, text-[12px]) still win over them. */
+@layer base {
+  /* Inputs — bottom border only */
+  input[type="text"],
+  input[type="search"],
+  input[type="email"],
+  textarea,
+  select {
+    background: transparent;
+    color: var(--color-ink);
+    border: none;
+    border-bottom: 1px solid var(--color-border);
+    padding: 8px 2px;
+    width: 100%;
+    font-family: var(--font-sans);
+    font-size: 14px;
+    transition: border-color 150ms ease-out;
+  }
+  input[type="text"]:focus,
+  input[type="search"]:focus,
+  input[type="email"]:focus,
+  textarea:focus,
+  select:focus {
+    border-bottom-color: var(--color-gold);
+    outline: none;
+  }
+  input::placeholder,
+  textarea::placeholder {
+    color: var(--color-ink-faint);
+  }
 
-/* Buttons baseline — no default rounding, no shadow */
-button {
-  font-family: var(--font-sans);
-  cursor: pointer;
-  background: transparent;
-  border: none;
-  color: inherit;
-  padding: 0;
+  /* Buttons baseline — no default rounding, no shadow */
+  button {
+    font-family: var(--font-sans);
+    cursor: pointer;
+    background: transparent;
+    border: none;
+    color: inherit;
+    padding: 0;
+  }
 }
 
 /* Verse text typography — the most important rule in this file */
