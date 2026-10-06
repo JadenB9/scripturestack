@@ -31,9 +31,10 @@ function relativeDate(ts: number): string {
 }
 
 // Hidden file input + button for restoring an exported annotations.json.
-function ImportButton({ className }: { className: string }) {
+// The result message is reported up, since a first import swaps the empty
+// state (where this button may live) for the full library.
+function ImportButton({ className, setStatus }: { className: string; setStatus: (s: string) => void }) {
   const inputRef = useRef<HTMLInputElement>(null);
-  const [status, setStatus] = useState<string | null>(null);
 
   async function onFile(file: File) {
     try {
@@ -66,11 +67,6 @@ function ImportButton({ className }: { className: string }) {
       <button onClick={() => inputRef.current?.click()} className={className}>
         Import JSON
       </button>
-      {status && (
-        <span className="text-[11px]" role="status" style={{ color: "var(--color-ink-muted)" }}>
-          {status}
-        </span>
-      )}
     </>
   );
 }
@@ -86,6 +82,13 @@ export function AnnotationLibrary() {
   const [sort, setSort] = useState<SortMode>("newest");
   const [showExport, setShowExport] = useState(false);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
+  const [importStatus, setImportStatus] = useState<string | null>(null);
+
+  const statusLine = importStatus && (
+    <span className="text-[11px]" role="status" style={{ color: "var(--color-ink-muted)" }}>
+      {importStatus}
+    </span>
+  );
 
   useEffect(() => {
     setItems(listAnnotations());
@@ -155,8 +158,9 @@ export function AnnotationLibrary() {
           <Link href="/read/Genesis/1" className="btn btn-primary">
             Open Genesis 1
           </Link>
-          <ImportButton className="btn" />
+          <ImportButton className="btn" setStatus={setImportStatus} />
         </div>
+        <div className="mt-3">{statusLine}</div>
       </div>
     );
   }
@@ -224,7 +228,8 @@ export function AnnotationLibrary() {
         </select>
 
         <div className="ml-auto relative flex items-center gap-2">
-          <ImportButton className="btn" />
+          {statusLine}
+          <ImportButton className="btn" setStatus={setImportStatus} />
           <button
             onClick={() => setShowExport((s) => !s)}
             aria-expanded={showExport}
