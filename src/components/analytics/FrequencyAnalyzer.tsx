@@ -252,8 +252,11 @@ function WordFrequencyTab() {
                     fill="var(--color-gold)"
                     radius={[0, 2, 2, 0]}
                     onClick={((datum: unknown) => {
-                      const p = (datum as { payload?: FrequencyWord })?.payload;
-                      if (p) setSelectedWord(p);
+                      // chartData only carries word + count, so look the full
+                      // entry (with its sample verses) back up by word.
+                      const word = (datum as { payload?: { word?: string } })?.payload?.word;
+                      const full = data.words.find((w) => w.word === word);
+                      if (full) setSelectedWord(full);
                     }) as never}
                     cursor="pointer"
                   />
