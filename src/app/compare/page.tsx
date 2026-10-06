@@ -17,7 +17,7 @@ export default function CompareRoute() {
             className="mt-3 text-[14px] max-w-[620px]"
             style={{ color: "var(--color-ink-muted)" }}
           >
-            Place up to four translations beside one another. Differences from the ESV base text are highlighted at the word level.
+            Place up to four translations beside one another: the ESV plus the public-domain KJV, ASV, WEB and Bible in Basic English. Words that differ from the ESV are highlighted.
           </p>
         </header>
         <ComparePage books={BOOKS} />

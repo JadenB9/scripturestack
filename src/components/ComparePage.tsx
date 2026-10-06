@@ -1,94 +1,13 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { Fragment, useEffect, useMemo, useRef, useState } from "react";
 import type { BookMeta } from "@/lib/data/books";
+import { ALT_TRANSLATIONS, TRANSLATION_IDS, diffWords, type TranslationId } from "@/lib/translations";
 
 type Verse = { verse: number; text: string };
-type TranslationId = "ESV" | "KJV" | "NASB" | "HCSB";
+type Loaded = Verse[] | { error: string };
 
-const AVAILABLE_TRANSLATIONS: TranslationId[] = ["ESV", "KJV", "NASB", "HCSB"];
-
-// Heuristic archaizers per translation — ESV is the truth, others are stylized.
-type Replacer = Array<[RegExp, string]>;
-
-const KJV_REPLACERS: Replacer = [
-  [/\byou\b/g, "thou"],
-  [/\byour\b/g, "thy"],
-  [/\byours\b/g, "thine"],
-  [/\bare\b/g, "art"],
-  [/\bhave\b/g, "hast"],
-  [/\bhas\b/g, "hath"],
-  [/\bsaid\b/g, "spake"],
-  [/\bdoes\b/g, "doth"],
-  [/\bdo\b/g, "doth"],
-  [/\bto\b/g, "unto"],
-];
-
-const NASB_REPLACERS: Replacer = [
-  [/\bbehold\b/g, "behold,"],
-  [/\bLord\b/g, "LORD"],
-  [/\bindeed\b/g, "truly"],
-  [/\btherefore\b/g, "so then"],
-  [/\bsaid\b/g, "declared"],
-];
-
-const HCSB_REPLACERS: Replacer = [
-  [/\bbehold\b/g, "look"],
-  [/\bshall\b/g, "will"],
-  [/\btherefore\b/g, "so"],
-  [/\bheart\b/g, "mind"],
-  [/\bsaid\b/g, "replied"],
-];
-
-function applyReplacers(text: string, replacers: Replacer): string {
-  let out = text;
-  for (const [re, rep] of replacers) {
-    out = out.replace(new RegExp(re.source, "gi"), (match) => {
-      const firstChar = match.charAt(0);
-      const isUpper =
-        firstChar === firstChar.toUpperCase() &&
-        firstChar !== firstChar.toLowerCase();
-      return isUpper ? rep.charAt(0).toUpperCase() + rep.slice(1) : rep;
-    });
-  }
-  return out;
-}
-
-function renderTranslation(esvText: string, id: TranslationId): string {
-  switch (id) {
-    case "ESV":
-      return esvText;
-    case "KJV":
-      return applyReplacers(esvText, KJV_REPLACERS);
-    case "NASB":
-      return applyReplacers(esvText, NASB_REPLACERS);
-    case "HCSB":
-      return applyReplacers(esvText, HCSB_REPLACERS);
-  }
-}
-
-type DiffToken = { text: string; differs: boolean; esvWord: string };
-
-function tokenize(text: string): string[] {
-  return text.split(/(\s+)/);
-}
-
-function diffWords(esv: string, other: string): DiffToken[] {
-  const a = tokenize(esv);
-  const b = tokenize(other);
-  const max = Math.max(a.length, b.length);
-  const out: DiffToken[] = [];
-  for (let i = 0; i < max; i++) {
-    const ax = a[i] ?? "";
-    const bx = b[i] ?? "";
-    out.push({
-      text: bx,
-      differs: ax.toLowerCase() !== bx.toLowerCase() && bx.trim().length > 0,
-      esvWord: ax,
-    });
-  }
-  return out;
-}
+const MAX_COLUMNS = 4;
 
 type ViewMode = "chapter" | "verse";
 
@@ -99,42 +18,54 @@ export function ComparePage({ books }: { books: BookMeta[] }) {
   const [verseEnd, setVerseEnd] = useState<number | "">(17);
   const [viewMode, setViewMode] = useState<ViewMode>("verse");
   const [columns, setColumns] = useState<TranslationId[]>(["ESV", "KJV"]);
-  const [verses, setVerses] = useState<Verse[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  // Fetched chapters keyed by "translation|book|chapter", so flipping columns
+  // on and off doesn't refetch.
+  const [loaded, setLoaded] = useState<Record<string, Loaded>>({});
+  const inFlight = useRef(new Set<string>());
 
   const bookMeta = useMemo(() => books.find((b) => b.name === book), [books, book]);
   const maxChapter = bookMeta?.chapters ?? 1;
 
   useEffect(() => {
-    setVerses(null);
-    setError(null);
-    fetch(`/api/read/${encodeURIComponent(book)}/${chapter}`)
-      .then((r) => r.json())
-      .then((d: { verses?: Verse[]; error?: string }) => {
-        if (d.error) {
-          setError(d.error);
-          setVerses([]);
-        } else {
-          setVerses(d.verses ?? []);
-        }
-      })
-      .catch(() => {
-        setError("Failed to load chapter");
-        setVerses([]);
-      });
-  }, [book, chapter]);
+    for (const t of columns) {
+      const key = `${t}|${book}|${chapter}`;
+      if (loaded[key] || inFlight.current.has(key)) continue;
+      inFlight.current.add(key);
+      fetch(`/api/read/${encodeURIComponent(book)}/${chapter}?translation=${t}`)
+        .then((r) => r.json())
+        .then((d: { verses?: Verse[]; error?: string }) => {
+          setLoaded((prev) => ({ ...prev, [key]: d.error ? { error: d.error } : d.verses ?? [] }));
+        })
+        .catch(() => {
+          setLoaded((prev) => ({ ...prev, [key]: { error: `Couldn't load ${t}` } }));
+        })
+        .finally(() => inFlight.current.delete(key));
+    }
+  }, [book, chapter, columns, loaded]);
+
+  function versesFor(t: TranslationId): Loaded | undefined {
+    return loaded[`${t}|${book}|${chapter}`];
+  }
+
+  const esv = versesFor("ESV");
+  const esvVerses = Array.isArray(esv) ? esv : null;
 
   const displayedVerses = useMemo(() => {
-    if (!verses) return null;
-    if (viewMode === "chapter") return verses;
+    if (!esvVerses) return null;
+    if (viewMode === "chapter") return esvVerses;
     const vs = typeof verseStart === "number" ? verseStart : 1;
     const ve = typeof verseEnd === "number" ? verseEnd : vs;
-    return verses.filter((v) => v.verse >= vs && v.verse <= ve);
-  }, [verses, viewMode, verseStart, verseEnd]);
+    return esvVerses.filter((v) => v.verse >= vs && v.verse <= ve);
+  }, [esvVerses, viewMode, verseStart, verseEnd]);
+
+  const columnErrors = columns
+    .map((c) => versesFor(c))
+    .filter((v): v is { error: string } => !!v && !Array.isArray(v))
+    .map((v) => v.error);
 
   function addColumn(id: TranslationId) {
     if (columns.includes(id)) return;
-    if (columns.length >= 4) return;
+    if (columns.length >= MAX_COLUMNS) return;
     setColumns([...columns, id]);
   }
 
@@ -143,7 +74,7 @@ export function ComparePage({ books }: { books: BookMeta[] }) {
     setColumns(columns.filter((c) => c !== id));
   }
 
-  const addable = AVAILABLE_TRANSLATIONS.filter((t) => !columns.includes(t));
+  const addable = TRANSLATION_IDS.filter((t) => !columns.includes(t));
 
   return (
     <div>
@@ -301,12 +232,13 @@ export function ComparePage({ books }: { books: BookMeta[] }) {
             </span>
           ))}
         </div>
-        {addable.length > 0 && columns.length < 4 && (
+        {addable.length > 0 && columns.length < MAX_COLUMNS && (
           <div className="flex items-center gap-1">
             {addable.map((t) => (
               <button
                 key={t}
                 onClick={() => addColumn(t)}
+                title={ALT_TRANSLATIONS.find((a) => a.id === t)?.name}
                 className="h-7 px-2 text-[11px] border"
                 style={{
                   borderColor: "var(--color-border-strong)",
@@ -321,18 +253,17 @@ export function ComparePage({ books }: { books: BookMeta[] }) {
         )}
       </div>
 
-      {/* Comparison grid */}
+      {/* Comparison grid: one row per verse so the translations line up.
+          Columns keep a readable minimum width and scroll sideways on phones. */}
       <div
-        className="border overflow-hidden"
+        className="border overflow-x-auto"
         style={{ borderColor: "var(--color-border)", borderRadius: 8 }}
       >
-        {/* Column headers */}
         <div
           className="grid"
           style={{
-            gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))`,
-            background: "var(--color-parchment)",
-            borderBottom: "1px solid var(--color-border)",
+            gridTemplateColumns: `repeat(${columns.length}, minmax(150px, 1fr))`,
+            background: "var(--color-surface)",
           }}
         >
           {columns.map((c, i) => (
@@ -340,19 +271,53 @@ export function ComparePage({ books }: { books: BookMeta[] }) {
               key={c}
               className="px-4 py-2"
               style={{
-                borderRight:
-                  i < columns.length - 1
-                    ? "1px solid var(--color-border)"
-                    : undefined,
+                background: "var(--color-parchment)",
+                borderBottom: "1px solid var(--color-border)",
+                borderRight: i < columns.length - 1 ? "1px solid var(--color-border)" : undefined,
               }}
             >
               <span className="t-label">{c}</span>
             </div>
           ))}
+
+          {displayedVerses?.map((v) =>
+            columns.map((c, colIdx) => {
+              const data = versesFor(c);
+              const own = Array.isArray(data) ? data.find((x) => x.verse === v.verse) : undefined;
+              const tokens = c === "ESV" || !own ? null : diffWords(v.text, own.text);
+              return (
+                <div
+                  key={`${v.verse}-${c}`}
+                  className="px-5 py-2"
+                  style={{
+                    borderRight: colIdx < columns.length - 1 ? "1px solid var(--color-border)" : undefined,
+                  }}
+                >
+                  <p className="verse-text" style={{ fontSize: 15, lineHeight: 1.8 }}>
+                    <sup className="verse-number">{v.verse}</sup>
+                    {c === "ESV" && <span>{v.text}</span>}
+                    {c !== "ESV" && data === undefined && (
+                      <span className="skeleton inline-block h-3 w-3/4 align-middle" />
+                    )}
+                    {c !== "ESV" && data !== undefined && !own && (
+                      <span style={{ color: "var(--color-ink-faint)" }}>—</span>
+                    )}
+                    {tokens?.map((t, i) => (
+                      <Fragment key={i}>
+                        {i > 0 && " "}
+                        <span style={{ background: t.differs ? "var(--color-gold-light)" : "transparent" }}>
+                          {t.text}
+                        </span>
+                      </Fragment>
+                    ))}
+                  </p>
+                </div>
+              );
+            })
+          )}
         </div>
 
-        {/* Content */}
-        {displayedVerses === null && (
+        {displayedVerses === null && !esv && (
           <div className="p-8">
             {Array.from({ length: 4 }).map((_, i) => (
               <div key={i} className="skeleton h-4 w-full mb-2" />
@@ -360,80 +325,15 @@ export function ComparePage({ books }: { books: BookMeta[] }) {
           </div>
         )}
 
-        {error && (
-          <div
-            className="p-6 text-[13px]"
-            style={{ color: "var(--color-ink-faint)" }}
-          >
-            {error}
+        {columnErrors.length > 0 && (
+          <div className="p-6 text-[13px]" role="alert" style={{ color: "var(--color-ink-faint)" }}>
+            {columnErrors.join(" · ")}
           </div>
         )}
 
-        {displayedVerses && displayedVerses.length === 0 && !error && (
-          <div
-            className="p-6 text-[13px]"
-            style={{ color: "var(--color-ink-faint)" }}
-          >
+        {displayedVerses && displayedVerses.length === 0 && (
+          <div className="p-6 text-[13px]" style={{ color: "var(--color-ink-faint)" }}>
             No verses in this range.
-          </div>
-        )}
-
-        {displayedVerses && displayedVerses.length > 0 && (
-          <div
-            className="grid"
-            style={{
-              gridTemplateColumns: `repeat(${columns.length}, minmax(0, 1fr))`,
-            }}
-          >
-            {columns.map((c, colIdx) => (
-              <div
-                key={c}
-                className="p-5"
-                style={{
-                  borderRight:
-                    colIdx < columns.length - 1
-                      ? "1px solid var(--color-border)"
-                      : undefined,
-                  background: "var(--color-surface)",
-                }}
-              >
-                {displayedVerses.map((v) => {
-                  const esvText = v.text;
-                  const text = renderTranslation(esvText, c);
-                  const tokens = c === "ESV" ? null : diffWords(esvText, text);
-                  return (
-                    <p
-                      key={v.verse}
-                      className="verse-text mb-3"
-                      style={{ fontSize: 15, lineHeight: 1.8 }}
-                    >
-                      <sup className="verse-number">{v.verse}</sup>
-                      {tokens === null ? (
-                        <span>{text}</span>
-                      ) : (
-                        tokens.map((t, i) => (
-                          <span
-                            key={i}
-                            title={
-                              t.differs && t.esvWord.trim()
-                                ? `ESV: ${t.esvWord}`
-                                : undefined
-                            }
-                            style={{
-                              background: t.differs
-                                ? "var(--color-gold-light)"
-                                : "transparent",
-                            }}
-                          >
-                            {t.text}
-                          </span>
-                        ))
-                      )}
-                    </p>
-                  );
-                })}
-              </div>
-            ))}
           </div>
         )}
       </div>
