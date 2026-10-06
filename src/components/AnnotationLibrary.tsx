@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ANN_COLORS,
   ANN_TYPES,
@@ -12,6 +12,7 @@ import {
   exportAsMarkdown,
   exportAsText,
   getAllTags,
+  importFromJSON,
   listAnnotations,
 } from "@/lib/annotations";
 import { BOOKS } from "@/lib/data/books";
@@ -27,6 +28,51 @@ function relativeDate(ts: number): string {
   if (days < 30) return `${Math.floor(days / 7)} weeks ago`;
   if (days < 365) return `${Math.floor(days / 30)} months ago`;
   return `${Math.floor(days / 365)} years ago`;
+}
+
+// Hidden file input + button for restoring an exported annotations.json.
+function ImportButton({ className }: { className: string }) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const [status, setStatus] = useState<string | null>(null);
+
+  async function onFile(file: File) {
+    try {
+      const { added, updated, skipped } = importFromJSON(await file.text());
+      setStatus(
+        `Imported ${added} new` +
+          (updated ? `, updated ${updated}` : "") +
+          (skipped ? `, skipped ${skipped}` : "")
+      );
+    } catch {
+      setStatus("That file isn't an annotations JSON export.");
+    }
+  }
+
+  return (
+    <>
+      <input
+        ref={inputRef}
+        type="file"
+        accept="application/json,.json"
+        className="hidden"
+        aria-hidden="true"
+        tabIndex={-1}
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          if (file) onFile(file);
+          e.target.value = "";
+        }}
+      />
+      <button onClick={() => inputRef.current?.click()} className={className}>
+        Import JSON
+      </button>
+      {status && (
+        <span className="text-[11px]" role="status" style={{ color: "var(--color-ink-muted)" }}>
+          {status}
+        </span>
+      )}
+    </>
+  );
 }
 
 const BOOK_ORDER: Record<string, number> = Object.fromEntries(BOOKS.map((b, i) => [b.name, i]));
@@ -105,9 +151,12 @@ export function AnnotationLibrary() {
         <p className="text-[14px] mb-4" style={{ color: "var(--color-ink-muted)" }}>
           Start reading a chapter. Click any verse to add your first note.
         </p>
-        <Link href="/read/Genesis/1" className="btn btn-primary">
-          Open Genesis 1
-        </Link>
+        <div className="flex flex-wrap items-center justify-center gap-3">
+          <Link href="/read/Genesis/1" className="btn btn-primary">
+            Open Genesis 1
+          </Link>
+          <ImportButton className="btn" />
+        </div>
       </div>
     );
   }
@@ -174,8 +223,13 @@ export function AnnotationLibrary() {
           <option value="canonical">Canonical order</option>
         </select>
 
-        <div className="ml-auto relative">
-          <button onClick={() => setShowExport((s) => !s)} className="btn">
+        <div className="ml-auto relative flex items-center gap-2">
+          <ImportButton className="btn" />
+          <button
+            onClick={() => setShowExport((s) => !s)}
+            aria-expanded={showExport}
+            className="btn"
+          >
             Export ↓
           </button>
           {showExport && (

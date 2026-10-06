@@ -172,6 +172,73 @@ export function exportAsJSON(): string {
   return JSON.stringify(listAnnotations(), null, 2);
 }
 
+/**
+ * Restore annotations from an exportAsJSON() file. Entries are checked field
+ * by field (it's a file from disk, so anything could be in it) and merged by
+ * id, keeping whichever copy was updated last.
+ */
+export function importFromJSON(raw: string): { added: number; updated: number; skipped: number } {
+  const parsed: unknown = JSON.parse(raw);
+  if (!Array.isArray(parsed)) throw new Error("Expected a list of annotations");
+
+  const types = new Set<string>(ANN_TYPES.map((t) => t.value));
+  const colors = new Set<string>(ANN_COLORS.map((c) => c.value));
+  const isPosInt = (n: unknown) => typeof n === "number" && Number.isInteger(n) && n > 0;
+
+  const list = readAll();
+  const byId = new Map(list.map((a, i) => [a.id, i]));
+  let added = 0;
+  let updated = 0;
+  let skipped = 0;
+
+  for (const item of parsed as Array<Record<string, unknown>>) {
+    const valid =
+      item &&
+      typeof item.id === "string" &&
+      typeof item.book === "string" &&
+      isPosInt(item.chapter) &&
+      isPosInt(item.verse) &&
+      types.has(item.type as string) &&
+      colors.has(item.color as string) &&
+      typeof item.text === "string" &&
+      Array.isArray(item.tags) &&
+      item.tags.every((t) => typeof t === "string") &&
+      typeof item.createdAt === "number" &&
+      typeof item.updatedAt === "number";
+    if (!valid) {
+      skipped++;
+      continue;
+    }
+    const ann: Annotation = {
+      id: item.id as string,
+      deviceId: typeof item.deviceId === "string" ? item.deviceId : getDeviceId(),
+      book: item.book as string,
+      chapter: item.chapter as number,
+      verse: item.verse as number,
+      type: item.type as AnnotationType,
+      color: item.color as AnnotationColor,
+      text: item.text as string,
+      tags: item.tags as string[],
+      createdAt: item.createdAt as number,
+      updatedAt: item.updatedAt as number,
+    };
+    const idx = byId.get(ann.id);
+    if (idx === undefined) {
+      byId.set(ann.id, list.length);
+      list.push(ann);
+      added++;
+    } else if (ann.updatedAt > list[idx].updatedAt) {
+      list[idx] = ann;
+      updated++;
+    } else {
+      skipped++;
+    }
+  }
+
+  if (added || updated) writeAll(list);
+  return { added, updated, skipped };
+}
+
 export function downloadFile(content: string, filename: string, mime: string) {
   const blob = new Blob([content], { type: mime });
   const url = URL.createObjectURL(blob);
