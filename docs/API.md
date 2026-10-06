@@ -76,3 +76,21 @@ Semantic search over the verse corpus.
 4. Top-N rows returned with similarity scores
 
 **Requires:** the `verses` table must be seeded (`npm run seed`) and the HNSW index built (the seed script does this automatically on completion).
+
+## `GET /api/read/{book}/{chapter}`
+
+One chapter of text. `book` is the full name (`John`, `1 Corinthians`,
+`Song of Solomon`), URL-encoded.
+
+**Query:** `translation` — `ESV` (default), `KJV`, `ASV`, `WEB` or `BBE`.
+ESV comes from the `verses` table, falling back to the Crossway API; the
+others come from bible-api.com and are cached for a month.
+
+```json
+{ "book": "John", "chapter": 3, "translation": "KJV", "verses": [{ "verse": 16, "text": "For God so loved the world, ..." }] }
+```
+
+**Errors**
+- `404` — unknown book, or chapter out of range for that book
+- `400` — unknown translation
+- `502` — the translation source was unreachable

@@ -23,7 +23,8 @@ Live at [scripturestack.j4den.com](https://scripturestack.j4den.com).
 - **Manuscripts** — where our text comes from: major manuscripts and the
   variants between them
 - **Prophecy** — a tracker pairing prophecies with their fulfillments
-- **Compare** — translations side by side
+- **Compare** — the ESV beside the public-domain KJV, ASV, WEB and BBE,
+  with word-level differences highlighted
 - **Analytics** — word frequency and writing-style stats across books
 - **Calendar** — the Hebrew calendar with its feasts, mapped to dates
 
@@ -36,7 +37,7 @@ Live at [scripturestack.j4den.com](https://scripturestack.j4den.com).
 | ORM | Drizzle |
 | Visualization | D3.js + Recharts |
 | Maps | Mapbox GL JS |
-| Bible text | Crossway ESV API |
+| Bible text | Crossway ESV API; public-domain translations from bible-api.com |
 | ML layer | Python + HuggingFace on Railway (separate repo: `scripturestack-ml`) |
 | Hosting | Vercel (frontend) + Railway (ML service) |
 
