@@ -54,6 +54,7 @@ export function SemanticSearch() {
   const [results, setResults] = useState<Result[] | null>(null);
   const [queryTerms, setQueryTerms] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const [mapPoints, setMapPoints] = useState<MapPoint[]>([]);
   const [mapLoading, setMapLoading] = useState(true);
   const [highlightIds, setHighlightIds] = useState<Set<number>>(new Set());
@@ -72,27 +73,48 @@ export function SemanticSearch() {
       .catch(() => setMapLoading(false));
   }, []);
 
-  const runSearch = useCallback(async () => {
-    if (!query.trim()) return;
+  const runSearch = useCallback(async (text: string) => {
+    const q = text.trim();
+    if (!q) return;
     setLoading(true);
     setResults(null);
+    setError(null);
+    // Keep the query in the URL so a search can be shared or reloaded.
+    window.history.replaceState(null, "", `?q=${encodeURIComponent(q)}`);
     try {
       const res = await fetch("/api/search", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ query: query.trim(), limit: 20 }),
+        body: JSON.stringify({ query: q, limit: 20 }),
       });
+      if (!res.ok) {
+        setError(
+          res.status === 400
+            ? "That query couldn't be searched. Try something shorter."
+            : "Semantic search is unavailable right now. Please try again in a minute."
+        );
+        return;
+      }
       const data = (await res.json()) as SearchResponse;
       const list = data.results ?? [];
       setResults(list);
       setQueryTerms(data.queryTerms ?? []);
       setHighlightIds(new Set(list.map((r) => r.id)));
     } catch {
-      setResults([]);
+      setError("Couldn't reach the server. Check your connection and try again.");
     } finally {
       setLoading(false);
     }
-  }, [query]);
+  }, []);
+
+  // Run a search passed in the URL (/analytics/semantic?q=...).
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search).get("q");
+    if (q) {
+      setQuery(q);
+      runSearch(q);
+    }
+  }, [runSearch]);
 
   function colorForBook(book: string): string {
     const meta = BOOKS_BY_NAME.get(book);
@@ -111,12 +133,14 @@ export function SemanticSearch() {
             type="search"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === "Enter" && runSearch()}
+            onKeyDown={(e) => e.key === "Enter" && runSearch(query)}
             placeholder="Search by meaning, not just words…"
+            aria-label="Search scripture by meaning"
+            maxLength={2000}
             className="flex-1 text-[22px]"
             style={{ border: "none", padding: 0, background: "transparent", color: "var(--color-ink)" }}
           />
-          <button onClick={runSearch} className="btn btn-primary">Search</button>
+          <button onClick={() => runSearch(query)} disabled={loading} className="btn btn-primary">Search</button>
         </div>
       </div>
 
@@ -131,6 +155,10 @@ export function SemanticSearch() {
             </div>
           ))}
         </div>
+      )}
+
+      {!loading && error && (
+        <p className="t-meta mb-10" role="alert">{error}</p>
       )}
 
       {!loading && results && results.length === 0 && (
@@ -195,7 +223,7 @@ export function SemanticSearch() {
           </div>
         )}
         {!mapLoading && mapPoints.length > 0 && (
-          <div className="flex gap-6">
+          <div className="flex flex-col md:flex-row gap-6">
             <div
               className="flex-1 relative border"
               style={{
@@ -244,7 +272,7 @@ export function SemanticSearch() {
 
             {selectedPoint && (
               <aside
-                className="w-[300px] border p-4 fade-in"
+                className="w-full md:w-[300px] border p-4 fade-in"
                 style={{ borderColor: "var(--color-border)", background: "var(--color-surface)", borderRadius: 4 }}
               >
                 <div className="t-label mb-2">Selected verse</div>
