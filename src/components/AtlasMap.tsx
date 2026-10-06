@@ -229,13 +229,19 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
         }, 10000);
 
         let firstError: string | null = null;
+        let didLoad = false;
         map.on("error", (e) => {
           const message = e?.error?.message || String(e?.error || "unknown mapbox error");
           // eslint-disable-next-line no-console
           console.warn("[atlas] mapbox error:", message);
+          // A single tile failing after the map is up shouldn't replace the
+          // whole map with an error card — only fail if it never loaded.
+          if (didLoad) return;
           if (!firstError) {
             firstError = message;
-            if (!cancelled) setLoadError(message);
+            // Tile errors include the full request URL (token and all); the
+            // console has it, the page doesn't need it.
+            if (!cancelled) setLoadError(message.replace(/https?:\/\/\S+/g, "").trim() || "Map tiles could not be loaded.");
           }
         });
 
@@ -244,6 +250,7 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
         });
 
         map.on("load", () => {
+          didLoad = true;
           if (!map) return;
 
           // Parchment + water tinting

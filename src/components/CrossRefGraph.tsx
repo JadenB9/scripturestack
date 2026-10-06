@@ -610,12 +610,10 @@ export function CrossRefGraph() {
           </div>
         </div>
 
-        {/* Search (top-right) */}
+        {/* Search (top-right; bottom-left on phones so it doesn't sit on the filter panel) */}
         <div
-          className="absolute border"
+          className="absolute border bottom-3 left-3 sm:bottom-auto sm:left-auto sm:top-3 sm:right-3"
           style={{
-            top: 12,
-            right: 12,
             padding: 10,
             background: "var(--color-surface)",
             borderColor: "var(--color-border-strong)",
@@ -710,7 +708,7 @@ export function CrossRefGraph() {
             top: 56,
             right: 0,
             bottom: 0,
-            width: 340,
+            width: "min(340px, 100vw)",
             background: "var(--color-surface)",
             borderLeftColor: "var(--color-border-strong)",
             zIndex: 40,
