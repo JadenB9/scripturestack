@@ -71,8 +71,12 @@ html.dark {
   --font-sans: var(--font-sans);
 }
 
-* {
-  border-color: var(--color-border);
+/* Default border colour. In the base layer so .btn, .pill and border-*
+   utilities can still set their own. */
+@layer base {
+  * {
+    border-color: var(--color-border);
+  }
 }
 
 html, body {
