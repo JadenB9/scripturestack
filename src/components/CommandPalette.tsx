@@ -10,8 +10,30 @@ type PaletteItem = {
   sublabel?: string;
   href: string;
   keywords: string;
-  kind: "book" | "feature";
+  kind: "book" | "feature" | "passage" | "search";
 };
+
+// "john 3", "1 cor 13:4", "gen 1" -> a direct link to that chapter/verse.
+function parseReference(text: string): PaletteItem | null {
+  const m = text.trim().toLowerCase().match(/^(.+?)\s*(\d+)(?::(\d+))?$/);
+  if (!m) return null;
+  const name = m[1].replace(/\.$/, "").trim();
+  const chapter = Number(m[2]);
+  const verse = m[3] ? Number(m[3]) : null;
+  if (!name) return null;
+  const book =
+    BOOKS.find((b) => b.name.toLowerCase() === name || b.abbr.toLowerCase() === name) ??
+    BOOKS.find((b) => b.name.toLowerCase().startsWith(name));
+  if (!book || chapter < 1 || chapter > book.chapters) return null;
+  const ref = `${book.name} ${chapter}${verse ? `:${verse}` : ""}`;
+  return {
+    label: ref,
+    sublabel: "Open passage",
+    href: `/read/${encodeURIComponent(book.name)}/${chapter}${verse ? `#v${verse}` : ""}`,
+    keywords: "",
+    kind: "passage",
+  };
+}
 
 const FEATURE_ITEMS: PaletteItem[] = [
   { label: "Home", href: "/", keywords: "home dashboard start", kind: "feature" },
@@ -25,7 +47,7 @@ const FEATURE_ITEMS: PaletteItem[] = [
   { label: "Cross-reference Graph", href: "/graph", keywords: "graph cross references network", kind: "feature" },
   { label: "Prophecy Tracker", href: "/prophecy", keywords: "prophecy fulfillment messianic", kind: "feature" },
   { label: "Manuscripts", href: "/manuscripts", keywords: "manuscripts variants sinaiticus vaticanus dead sea scrolls", kind: "feature" },
-  { label: "Translation Compare", href: "/compare", keywords: "compare translations esv kjv nasb parallel", kind: "feature" },
+  { label: "Translation Compare", href: "/compare", keywords: "compare translations esv kjv asv web bbe parallel", kind: "feature" },
   { label: "Word Frequency", href: "/analytics/frequency", keywords: "frequency word count doctrine", kind: "feature" },
   { label: "Text Character", href: "/analytics/character", keywords: "sentiment character narrative texture", kind: "feature" },
   { label: "Semantic Search", href: "/analytics/semantic", keywords: "semantic search embeddings meaning map", kind: "feature" },
@@ -53,6 +75,13 @@ export function CommandPalette() {
   const filtered = useMemo(() => {
     if (!q.trim()) return items.slice(0, 30);
     const needle = q.trim().toLowerCase();
+    const passage = parseReference(q);
+    const meaningSearch: PaletteItem = {
+      label: `Search by meaning: “${q.trim()}”`,
+      href: `/analytics/semantic?q=${encodeURIComponent(q.trim())}`,
+      keywords: "",
+      kind: "search",
+    };
     const scored = items
       .map((item) => {
         const label = item.label.toLowerCase();
@@ -65,7 +94,7 @@ export function CommandPalette() {
       .filter((x) => x.score > 0)
       .sort((a, b) => b.score - a.score)
       .slice(0, 30);
-    return scored.map((x) => x.item);
+    return [...(passage ? [passage] : []), ...scored.map((x) => x.item), meaningSearch];
   }, [q, items]);
 
   useEffect(() => {
@@ -119,6 +148,9 @@ export function CommandPalette() {
           boxShadow: "0 20px 60px rgba(0,0,0,0.18)",
         }}
         onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+        aria-label="Command palette"
       >
         <div className="px-4 py-3 border-b" style={{ borderColor: "var(--color-border)" }}>
           <input
@@ -127,6 +159,7 @@ export function CommandPalette() {
             value={q}
             onChange={(e) => setQ(e.target.value)}
             placeholder="Jump to book, chapter, or feature…"
+            aria-label="Jump to book, chapter, or feature"
             className="w-full bg-transparent outline-none text-[15px]"
             style={{ border: "none", padding: 0 }}
           />
@@ -147,7 +180,7 @@ export function CommandPalette() {
               }}
             >
               <span className="t-label" style={{ fontSize: 9, minWidth: 38 }}>
-                {item.kind === "book" ? "BOOK" : "GO"}
+                {item.kind === "book" ? "BOOK" : item.kind === "passage" ? "READ" : item.kind === "search" ? "FIND" : "GO"}
               </span>
               <span className="flex-1">
                 <div className="text-[14px]" style={{ color: "var(--color-ink)" }}>{item.label}</div>
