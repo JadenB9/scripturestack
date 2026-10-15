@@ -268,12 +268,14 @@ export function MacroTimeline() {
           .attr("x", (d) => zx(d.startYear))
           .attr("width", (d) => Math.max(0, zx(d.endYear) - zx(d.startYear)));
 
+        // Hide a band's label when the band is narrower than the label
+        // itself, otherwise neighbours overprint each other at low zoom.
         epochSel
           .select<SVGTextElement>("text")
           .attr("x", (d) => (zx(d.startYear) + zx(d.endYear)) / 2)
-          .attr("opacity", (d) => {
+          .attr("opacity", function (this: SVGTextElement, d) {
             const w = zx(d.endYear) - zx(d.startYear);
-            return w < 40 ? 0 : 1;
+            return w < this.getComputedTextLength() + 12 ? 0 : 1;
           });
 
         zoomG.select<SVGLineElement>(".baseline").attr("x1", zx(YEAR_MIN)).attr("x2", zx(YEAR_MAX));
@@ -396,7 +398,7 @@ export function MacroTimeline() {
           it scrolls inside this box rather than dragging the page with it. */}
       <div
         ref={wrapRef}
-        className="relative border overflow-x-auto"
+        className="macro-timeline relative border overflow-x-auto"
         style={{
           borderColor: "var(--color-border)",
           background: "var(--color-surface)",

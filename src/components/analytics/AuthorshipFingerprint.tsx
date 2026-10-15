@@ -120,6 +120,7 @@ export function AuthorshipFingerprint() {
           value={text}
           onChange={(e) => setText(e.target.value)}
           placeholder="Paste any passage here to identify its likely author…"
+          maxLength={20000}
           className="w-full min-h-[140px] text-[14px] leading-[1.6] font-serif"
           style={{
             background: "var(--color-surface)",
@@ -134,7 +135,7 @@ export function AuthorshipFingerprint() {
           <button onClick={analyze} disabled={loading} className="btn btn-primary">
             {loading ? "Analyzing…" : "Analyze"}
           </button>
-          {error && <span className="text-[12px]" style={{ color: "#991B1B" }}>{error}</span>}
+          {error && <span className="text-[12px]" role="alert" style={{ color: "var(--color-danger)" }}>{error}</span>}
         </div>
 
         {ranked && ranked.length > 0 && (

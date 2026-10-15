@@ -160,7 +160,8 @@ export function Sidebar() {
           <span className="t-meta">v0.1 · beta</span>
           <button
             onClick={toggle}
-            aria-label="Toggle theme"
+            aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+            title={theme === "dark" ? "Light mode" : "Dark mode"}
             className="p-1.5 border rounded"
             style={{ borderColor: "var(--color-border)", color: "var(--color-ink-muted)" }}
           >

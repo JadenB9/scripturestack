@@ -8,10 +8,10 @@ import type {
 
 type SigFilter = "All" | VariantSignificance;
 
-const SIG_COLORS: Record<VariantSignificance, { bg: string; fg: string }> = {
-  significant: { bg: "#FEE2E2", fg: "#991B1B" },
-  moderate: { bg: "#FEF3C7", fg: "#92400E" },
-  minor: { bg: "#E7E5E4", fg: "#57534E" },
+export const SIG_COLORS: Record<VariantSignificance, { bg: string; fg: string }> = {
+  significant: { bg: "var(--color-danger-light)", fg: "var(--color-danger)" },
+  moderate: { bg: "var(--color-gold-light)", fg: "var(--color-gold)" },
+  minor: { bg: "var(--color-border)", fg: "var(--color-ink-muted)" },
 };
 
 export function VariantTable({ variants }: { variants: TextualVariant[] }) {

@@ -1,8 +1,12 @@
 "use client";
 
 import { createContext, useCallback, useContext, useEffect, useState } from "react";
-
-type Theme = "light" | "dark";
+import {
+  applyTheme,
+  LEGACY_THEME_STORAGE_KEY,
+  THEME_STORAGE_KEY,
+  type Theme,
+} from "@/lib/theme";
 
 type ThemeCtx = {
   theme: Theme;
@@ -12,7 +16,14 @@ type ThemeCtx = {
 
 const Ctx = createContext<ThemeCtx | null>(null);
 
-const STORAGE_KEY = "ss-theme";
+function readStored(): Theme | null {
+  try {
+    const t = localStorage.getItem(THEME_STORAGE_KEY) ?? localStorage.getItem(LEGACY_THEME_STORAGE_KEY);
+    return t === "dark" || t === "light" ? t : null;
+  } catch {
+    return null;
+  }
+}
 
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   // Start "light" on SSR. The inline script in <head> will have already
@@ -20,22 +31,30 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setThemeState] = useState<Theme>("light");
 
   useEffect(() => {
-    const stored = typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEY) : null;
-    const prefersDark = typeof window !== "undefined"
-      ? window.matchMedia("(prefers-color-scheme: dark)").matches
-      : false;
-    const initial: Theme = stored === "dark" || stored === "light"
-      ? stored
-      : prefersDark ? "dark" : "light";
+    const mq = window.matchMedia("(prefers-color-scheme: dark)");
+    const initial = readStored() ?? (mq.matches ? "dark" : "light");
     setThemeState(initial);
-    document.documentElement.classList.toggle("dark", initial === "dark");
+    applyTheme(initial);
+
+    // With nothing saved, keep following the device if it flips.
+    const onChange = (e: MediaQueryListEvent) => {
+      if (readStored()) return;
+      const next: Theme = e.matches ? "dark" : "light";
+      setThemeState(next);
+      applyTheme(next);
+    };
+    mq.addEventListener("change", onChange);
+    return () => mq.removeEventListener("change", onChange);
   }, []);
 
   const setTheme = useCallback((t: Theme) => {
     setThemeState(t);
-    if (typeof window !== "undefined") {
-      localStorage.setItem(STORAGE_KEY, t);
-      document.documentElement.classList.toggle("dark", t === "dark");
+    applyTheme(t);
+    try {
+      localStorage.setItem(THEME_STORAGE_KEY, t);
+      localStorage.removeItem(LEGACY_THEME_STORAGE_KEY);
+    } catch {
+      // private mode — the choice just doesn't persist
     }
   }, []);
 

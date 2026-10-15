@@ -197,7 +197,7 @@ function WordFrequencyTab() {
       </div>
 
       {error && (
-        <div className="mb-6 text-[13px]" style={{ color: "var(--ann-red-b)" }}>
+        <div className="mb-6 text-[13px]" role="alert" style={{ color: "var(--color-danger)" }}>
           Analysis failed: {error}
         </div>
       )}

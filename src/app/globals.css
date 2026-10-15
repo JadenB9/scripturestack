@@ -20,6 +20,13 @@
   --color-navy-light: #EFF6FF;
   --color-border: #E7E5E4;
   --color-border-strong: #D6D3D1;
+  --color-danger: #991B1B;
+  --color-danger-light: #FEE2E2;
+
+  /* Verse type size — the reading view's A↕ control changes this */
+  --verse-size: 18px;
+
+  color-scheme: light;
 
   /* Annotation hues */
   --ann-yellow: #FEF3C7;
@@ -53,6 +60,10 @@ html.dark {
   --color-navy-light: #1E2A3F;
   --color-border: #2E2A24;
   --color-border-strong: #413C34;
+  --color-danger: #F09A9A;
+  --color-danger-light: #3F1D1D;
+
+  color-scheme: dark;
 }
 
 @theme inline {
@@ -67,6 +78,8 @@ html.dark {
   --color-navy-light: var(--color-navy-light);
   --color-border: var(--color-border);
   --color-border-strong: var(--color-border-strong);
+  --color-danger: var(--color-danger);
+  --color-danger-light: var(--color-danger-light);
   --font-serif: var(--font-serif);
   --font-sans: var(--font-sans);
 }
@@ -168,7 +181,7 @@ body {
 /* Verse text typography — the most important rule in this file */
 .verse-text {
   font-family: var(--font-serif);
-  font-size: 18px;
+  font-size: var(--verse-size);
   line-height: 1.8;
   color: var(--color-ink);
   letter-spacing: 0.003em;
@@ -497,6 +510,12 @@ body {
   color: var(--color-ink);
 }
 
+/* Macro timeline epoch bands are pastel fills meant for parchment; on the
+   dark surface they go muddy at full strength, so fade them back. */
+html.dark .macro-timeline .epoch rect {
+  fill-opacity: 0.18;
+}
+
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -506,4 +525,46 @@ body {
     transition-duration: 1ms !important;
     scroll-behavior: auto !important;
   }
+}
+
+/* Print — just the passage. The chrome (sidebar, sticky header, panels,
+   annotation dots) stays on screen; the paper gets the reference and text. */
+@media print {
+  html, body {
+    background: #fff !important;
+    color: #000 !important;
+  }
+  .no-print,
+  aside,
+  [data-ann-editor] {
+    display: none !important;
+  }
+  main {
+    width: 100% !important;
+  }
+  .print-only {
+    display: block !important;
+  }
+  .verse-text {
+    color: #000;
+    font-size: 12pt;
+    line-height: 1.6;
+  }
+  .verse-number {
+    color: #555;
+  }
+  .verse-row {
+    border-left-color: transparent !important;
+    break-inside: avoid;
+  }
+  .lex-word {
+    border-bottom: none;
+  }
+  a {
+    text-decoration: none;
+    color: inherit;
+  }
+}
+.print-only {
+  display: none;
 }

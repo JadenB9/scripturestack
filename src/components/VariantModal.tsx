@@ -2,6 +2,7 @@
 
 import { useEffect } from "react";
 import { VARIANTS } from "@/lib/data/manuscripts";
+import { SIG_COLORS } from "./VariantTable";
 
 type Props = {
   book: string;
@@ -44,8 +45,8 @@ export function VariantModal({ book, chapter, verse, onClose }: Props) {
             <span
               className="badge"
               style={{
-                background: variant.significance === "significant" ? "#FEE2E2" : variant.significance === "moderate" ? "#FEF3C7" : "#E7E5E4",
-                color: variant.significance === "significant" ? "#991B1B" : variant.significance === "moderate" ? "#92400E" : "#57534E",
+                background: SIG_COLORS[variant.significance].bg,
+                color: SIG_COLORS[variant.significance].fg,
               }}
             >
               {variant.significance}
