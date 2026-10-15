@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { sql } from "drizzle-orm";
 import { db } from "@/db/client";
 import { verses } from "@/db/schema";
+import { clientKey, rateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 /**
  * Semantic search over the verses table with MMR-style diversity re-ranking.
@@ -93,11 +94,29 @@ function mmrRerank(
   return selected.map(({ vector: _v, ...rest }) => rest);
 }
 
+// Every search is an embedding call on the Railway box, so cap how fast one
+// client can fire them. 30/min is well above a person typing queries.
+const LIMIT_PER_MINUTE = 30;
+const MAX_BODY_BYTES = 8 * 1024;
+
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({}));
-  const query = typeof body.query === "string" ? body.query.trim() : "";
-  const limit = Math.min(Math.max(Number(body.limit) || 20, 1), 50);
-  const diversify = body.diversify !== false; // default on
+  const rl = rateLimit(`search:${clientKey(req)}`, LIMIT_PER_MINUTE, 60_000);
+  if (!rl.ok) return tooManyRequests(rl);
+
+  // A 2000-char query is a few KB; anything bigger isn't a query.
+  const declared = Number(req.headers.get("content-length"));
+  if (declared > MAX_BODY_BYTES) {
+    return NextResponse.json({ error: "request body is too large" }, { status: 413 });
+  }
+
+  const body: unknown = await req.json().catch(() => null);
+  if (!body || typeof body !== "object" || Array.isArray(body)) {
+    return NextResponse.json({ error: "expected a JSON object" }, { status: 400 });
+  }
+  const { query: rawQuery, limit: rawLimit, diversify: rawDiversify } = body as Record<string, unknown>;
+  const query = typeof rawQuery === "string" ? rawQuery.trim() : "";
+  const limit = Math.min(Math.max(Number(rawLimit) || 20, 1), 50);
+  const diversify = rawDiversify !== false; // default on
 
   if (!query) {
     return NextResponse.json({ error: "query is required" }, { status: 400 });
@@ -167,9 +186,12 @@ export async function POST(req: Request) {
     .split(/\s+/)
     .filter((t: string) => t.length > 2);
 
-  return NextResponse.json({
-    query,
-    queryTerms,
-    results: reranked.map(({ embedding: _e, ...rest }) => rest),
-  });
+  return NextResponse.json(
+    {
+      query,
+      queryTerms,
+      results: reranked.map(({ embedding: _e, ...rest }) => rest),
+    },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { asc, eq } from "drizzle-orm";
 import { db } from "@/db/client";
 import { verses } from "@/db/schema";
+import { getBook } from "@/lib/data/books";
 
 /**
  * Per-chapter sentiment and narrative-texture analysis for one book.
@@ -70,11 +71,16 @@ type ChapterCharacter = {
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const book = url.searchParams.get("book")?.trim() || "";
+  const bookParam = url.searchParams.get("book")?.trim() || "";
 
-  if (!book) {
+  if (!bookParam) {
     return NextResponse.json({ error: "book is required" }, { status: 400 });
   }
+  const meta = getBook(bookParam);
+  if (!meta) {
+    return NextResponse.json({ error: "unknown book" }, { status: 400 });
+  }
+  const book = meta.name;
 
   const rows = await db
     .select({

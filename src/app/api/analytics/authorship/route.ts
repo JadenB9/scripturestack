@@ -3,6 +3,7 @@ import { inArray } from "drizzle-orm";
 import { db } from "@/db/client";
 import { verses } from "@/db/schema";
 import { AUTHORS, RADAR_AXES } from "@/lib/data/authors";
+import { clientKey, rateLimit, tooManyRequests } from "@/lib/rate-limit";
 
 /**
  * Mystery-text authorship fingerprint — DB-backed edition.
@@ -55,13 +56,26 @@ const CAPS = {
   passiveVoice: 40,
 } as const;
 
+// The textarea on the page is capped at the same length.
+const MAX_TEXT_CHARS = 20_000;
+
 export async function POST(req: Request) {
-  const body = await req.json().catch(() => ({}));
-  const text = typeof body.text === "string" ? body.text.trim() : "";
+  const rl = rateLimit(`authorship:${clientKey(req)}`, 30, 60_000);
+  if (!rl.ok) return tooManyRequests(rl);
+
+  const body: unknown = await req.json().catch(() => null);
+  const raw = body && typeof body === "object" ? (body as Record<string, unknown>).text : null;
+  const text = typeof raw === "string" ? raw.trim() : "";
 
   if (!text || text.length < 20) {
     return NextResponse.json(
       { error: "text is required (at least 20 characters)" },
+      { status: 400 },
+    );
+  }
+  if (text.length > MAX_TEXT_CHARS) {
+    return NextResponse.json(
+      { error: `text is too long (max ${MAX_TEXT_CHARS.toLocaleString()} characters)` },
       { status: 400 },
     );
   }

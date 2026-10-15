@@ -3,6 +3,7 @@ import { and, eq, gte, lte } from "drizzle-orm";
 import { db } from "@/db/client";
 import { verses } from "@/db/schema";
 import { ENGLISH_STOPWORDS } from "@/lib/data/doctrines";
+import { getBook } from "@/lib/data/books";
 
 /**
  * Word-frequency analyzer for a book (optionally narrowed to a chapter range).
@@ -22,16 +23,29 @@ type FrequencyWord = {
 
 export async function GET(req: Request) {
   const url = new URL(req.url);
-  const book = url.searchParams.get("book")?.trim() || "";
+  const bookParam = url.searchParams.get("book")?.trim() || "";
   const fromStr = url.searchParams.get("from");
   const toStr = url.searchParams.get("to");
 
-  if (!book) {
+  if (!bookParam) {
     return NextResponse.json({ error: "book is required" }, { status: 400 });
   }
+  // Only a real book name goes to the database.
+  const meta = getBook(bookParam);
+  if (!meta) {
+    return NextResponse.json({ error: "unknown book" }, { status: 400 });
+  }
+  const book = meta.name;
 
-  const from = fromStr ? Math.max(1, parseInt(fromStr, 10)) : undefined;
-  const to = toStr ? Math.max(1, parseInt(toStr, 10)) : undefined;
+  // Chapter bounds: a bad number is ignored, an out-of-range one is clamped.
+  const clampChapter = (s: string | null) => {
+    if (!s) return undefined;
+    const n = parseInt(s, 10);
+    if (!Number.isFinite(n)) return undefined;
+    return Math.min(meta.chapters, Math.max(1, n));
+  };
+  const from = clampChapter(fromStr);
+  const to = clampChapter(toStr);
 
   const conditions = [eq(verses.book, book)];
   if (from !== undefined) conditions.push(gte(verses.chapter, from));
