@@ -25,6 +25,21 @@ type Props = {
 
 type Panel = "none" | "commentary" | "translation";
 
+// Verse type size. Saved per device so it sticks between chapters.
+type FontSize = "sm" | "md" | "lg";
+const FONT_SIZE_KEY = "ss-font-size";
+const FONT_PX: Record<FontSize, number> = { sm: 16, md: 18, lg: 21 };
+const FONT_ORDER: FontSize[] = ["sm", "md", "lg"];
+
+function readFontSize(): FontSize {
+  try {
+    const v = localStorage.getItem(FONT_SIZE_KEY);
+    return v === "sm" || v === "lg" ? v : "md";
+  } catch {
+    return "md";
+  }
+}
+
 export function ReadingView({
   book,
   chapter,
@@ -38,8 +53,23 @@ export function ReadingView({
   const [panel, setPanel] = useState<Panel>("none");
   const [highlightVerse, setHighlightVerse] = useState<number | null>(null);
   const [variantVerse, setVariantVerse] = useState<number | null>(null);
-  const [fontSize, setFontSize] = useState<"sm" | "md" | "lg">("md");
+  const [fontSize, setFontSize] = useState<FontSize>("md");
   const router = useRouter();
+
+  useEffect(() => {
+    setFontSize(readFontSize());
+  }, []);
+
+  const stepFontSize = useCallback((dir: 1 | -1) => {
+    setFontSize((s) => {
+      const i = Math.min(FONT_ORDER.length - 1, Math.max(0, FONT_ORDER.indexOf(s) + dir));
+      const next = FONT_ORDER[i];
+      try {
+        localStorage.setItem(FONT_SIZE_KEY, next);
+      } catch {}
+      return next;
+    });
+  }, []);
 
   const refreshAnnotations = useCallback(() => {
     setAnnotations(listForChapter(book, chapter));
@@ -53,8 +83,8 @@ export function ReadingView({
     return () => window.removeEventListener("ss-annotations-updated", handler);
   }, [book, chapter, refreshAnnotations]);
 
-  // Keyboard navigation: left/right arrows for prev/next chapter, Escape
-  // closes whichever side panel is open.
+  // Keyboard: left/right arrows for prev/next chapter, + and - for type
+  // size, Escape closes whichever side panel is open.
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       const target = e.target as HTMLElement;
@@ -67,10 +97,12 @@ export function ReadingView({
       if (e.key === "ArrowRight" && next) {
         router.push(`/read/${encodeURIComponent(next.book)}/${next.chapter}`);
       }
+      if (e.key === "+" || e.key === "=") stepFontSize(1);
+      if (e.key === "-" || e.key === "_") stepFontSize(-1);
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [prev, next, router]);
+  }, [prev, next, router, stepFontSize]);
 
   // Coming in from a link like /read/John/3#v16: flash that verse so it's
   // easy to spot under the sticky header.
@@ -93,13 +125,14 @@ export function ReadingView({
     }
   }, []);
 
-  const verseFontPx = fontSize === "sm" ? 16 : fontSize === "lg" ? 20 : 18;
-
   return (
-    <div className="min-h-screen flex flex-col" style={{ fontSize: verseFontPx }}>
+    <div
+      className="min-h-screen flex flex-col"
+      style={{ "--verse-size": `${FONT_PX[fontSize]}px` } as React.CSSProperties}
+    >
       {/* Sticky header */}
       <header
-        className="sticky top-0 z-20 border-b backdrop-blur"
+        className="no-print sticky top-0 z-20 border-b backdrop-blur"
         style={{
           background: "var(--color-parchment-translucent)",
           borderColor: "var(--color-border)",
@@ -121,13 +154,40 @@ export function ReadingView({
           </span>
 
           <div className="ml-auto flex items-center gap-1">
-            <button
-              onClick={() => setFontSize((s) => (s === "sm" ? "md" : s === "md" ? "lg" : "sm"))}
-              className="btn btn-ghost"
-              aria-label="Cycle font size"
-              title="Font size"
+            <div
+              className="flex items-center border rounded"
+              style={{ borderColor: "var(--color-border)" }}
+              role="group"
+              aria-label="Type size"
             >
-              A<sub className="ml-0.5 text-[10px]">↕</sub>
+              <button
+                onClick={() => stepFontSize(-1)}
+                disabled={fontSize === "sm"}
+                className="px-2 h-8 text-[12px] disabled:opacity-30"
+                aria-label="Smaller text"
+                title="Smaller text (-)"
+                style={{ color: "var(--color-ink-muted)" }}
+              >
+                A
+              </button>
+              <button
+                onClick={() => stepFontSize(1)}
+                disabled={fontSize === "lg"}
+                className="px-2 h-8 text-[16px] border-l disabled:opacity-30"
+                aria-label="Larger text"
+                title="Larger text (+)"
+                style={{ color: "var(--color-ink-muted)", borderColor: "var(--color-border)" }}
+              >
+                A
+              </button>
+            </div>
+            <button
+              onClick={() => window.print()}
+              className="btn btn-ghost hidden sm:inline-flex"
+              aria-label="Print this chapter"
+              title="Print"
+            >
+              Print
             </button>
             <button
               onClick={() => setPanel(panel === "translation" ? "none" : "translation")}
@@ -189,6 +249,12 @@ export function ReadingView({
         {/* Main reading column */}
         <div className="flex-1 min-w-0">
           <article className="max-w-[680px] mx-auto px-5 md:px-10 py-10">
+            {/* Paper gets a heading in place of the sticky header */}
+            <h1 className="print-only font-serif text-[22px] mb-6">
+              {book} {chapter}
+              <span className="text-[12px] ml-3" style={{ color: "#555" }}>ESV · ScriptureStack</span>
+            </h1>
+
             {verses.length === 0 && (
               <div className="py-20 text-center">
                 <p className="t-label mb-3">Not yet indexed</p>
@@ -214,7 +280,7 @@ export function ReadingView({
             })}
 
             <div
-              className="mt-16 pt-6 border-t flex items-center justify-between"
+              className="no-print mt-16 pt-6 border-t flex items-center justify-between"
               style={{ borderColor: "var(--color-border)" }}
             >
               {prev ? (

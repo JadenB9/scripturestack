@@ -31,13 +31,45 @@ export function AnnotationEditor({ book, chapter, verse, existing, onClose, onCh
   const [tags, setTags] = useState<string[]>([]);
   const [tagInput, setTagInput] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
+  const [copied, setCopied] = useState(false);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const allTags = Array.from(new Set([...SUGGESTED_TAGS, ...getAllTags()]));
+  const reference = `${book} ${chapter}:${verse}`;
 
   useEffect(() => {
     setTimeout(() => textareaRef.current?.focus(), 30);
   }, []);
+
+  useEffect(() => {
+    if (!copied) return;
+    const t = setTimeout(() => setCopied(false), 1600);
+    return () => clearTimeout(t);
+  }, [copied]);
+
+  // Share link lands on this verse: /read/John/3#v16 scrolls to and flashes it.
+  function verseUrl(): string {
+    return `${window.location.origin}/read/${encodeURIComponent(book)}/${chapter}#v${verse}`;
+  }
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(verseUrl());
+      setCopied(true);
+    } catch {
+      // Clipboard blocked (http, old browser) — fall back to the share sheet
+      // or just show the URL so it can be copied by hand.
+      if (navigator.share) {
+        navigator.share({ title: reference, url: verseUrl() }).catch(() => {});
+      } else {
+        window.prompt("Copy this link", verseUrl());
+      }
+    }
+  }
+
+  function share() {
+    navigator.share({ title: `${reference} · ScriptureStack`, url: verseUrl() }).catch(() => {});
+  }
 
   function save() {
     if (!text.trim()) return;
@@ -99,6 +131,28 @@ export function AnnotationEditor({ book, chapter, verse, existing, onClose, onCh
       }}
       onKeyDown={handleKey}
     >
+      <div
+        className="flex items-center gap-3 px-4 py-2 border-b text-[11px]"
+        style={{ borderColor: "var(--color-border)" }}
+      >
+        <span className="font-serif text-[13px]" style={{ color: "var(--color-gold)" }}>
+          {reference}
+        </span>
+        <button
+          onClick={copyLink}
+          className="ml-auto"
+          style={{ color: copied ? "var(--color-gold)" : "var(--color-ink-muted)" }}
+          aria-live="polite"
+        >
+          {copied ? "Link copied" : "Copy link"}
+        </button>
+        {typeof navigator !== "undefined" && typeof navigator.share === "function" && (
+          <button onClick={share} style={{ color: "var(--color-ink-muted)" }}>
+            Share
+          </button>
+        )}
+      </div>
+
       {existing.length > 0 && (
         <div className="border-b" style={{ borderColor: "var(--color-border)" }}>
           {existing.map((a) => {
