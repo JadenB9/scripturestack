@@ -8,8 +8,13 @@ import type { WalkthroughStop } from "@/lib/data/walkthrough";
 import { ERA_COLORS, ERA_ORDER } from "@/lib/data/walkthrough";
 import { LOCATIONS } from "@/lib/data/locations";
 import { detectWebGL } from "@/lib/webgl-check";
+import { MAP_PALETTE, MAP_STYLES, swapStyle, tintBaseStyle } from "@/lib/map-theme";
+import { useTheme } from "./ThemeProvider";
 
 type Props = { stops: WalkthroughStop[] };
+
+// Parchment-toned water here (the Atlas uses a bluer one)
+const WATER = { light: "#D9CDB3", dark: "#1A1F1E" } as const;
 
 type LoadedStop = {
   stop: WalkthroughStop;
@@ -43,6 +48,14 @@ export function WalkthroughPlayer({ stops }: Props) {
   const mapboxLibRef = useRef<typeof import("mapbox-gl") | null>(null);
   const playTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [mapError, setMapError] = useState<string | null>(null);
+  // Flips once the map exists so the marker effect runs for the first stop
+  // too (the map is created asynchronously, after that effect's first run).
+  const [mapReady, setMapReady] = useState(false);
+
+  const { theme } = useTheme();
+  const themeRef = useRef(theme);
+  const styleThemeRef = useRef<typeof theme | null>(null);
+  themeRef.current = theme;
 
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
   const current = stops[index];
@@ -69,9 +82,10 @@ export function WalkthroughPlayer({ stops }: Props) {
         mapboxLibRef.current = mapboxModule;
         mapboxgl.accessToken = token;
 
+        styleThemeRef.current = themeRef.current;
         localMap = new mapboxgl.Map({
           container: containerRef.current,
-          style: "mapbox://styles/mapbox/light-v11",
+          style: MAP_STYLES[themeRef.current],
           center: [33.5, 33],
           zoom: 4.5,
           attributionControl: false,
@@ -86,6 +100,7 @@ export function WalkthroughPlayer({ stops }: Props) {
           },
         });
         mapRef.current = localMap;
+        if (!cancelled) setMapReady(true);
 
         ro = new ResizeObserver(() => localMap?.resize());
         ro.observe(containerRef.current);
@@ -95,24 +110,10 @@ export function WalkthroughPlayer({ stops }: Props) {
           console.warn("[walkthrough] mapbox error", e?.error);
         });
 
-        localMap.on("load", () => {
+        // Tint on the first style load and again after a light/dark swap.
+        localMap.on("style.load", () => {
           if (!localMap) return;
-          try {
-            const style = localMap.getStyle();
-            for (const layer of style?.layers ?? []) {
-              if (layer.type === "background") {
-                localMap.setPaintProperty(layer.id, "background-color", "#F3EAD8");
-              } else if (layer.type === "fill") {
-                if (/water|ocean|sea|river|lake/i.test(layer.id)) {
-                  localMap.setPaintProperty(layer.id, "fill-color", "#D9CDB3");
-                } else if (/land|earth|landcover|landuse/i.test(layer.id)) {
-                  localMap.setPaintProperty(layer.id, "fill-color", "#F3EAD8");
-                }
-              }
-            }
-          } catch {
-            /* ignore tint failures */
-          }
+          tintBaseStyle(localMap, { theme: themeRef.current, water: WATER[themeRef.current] });
         });
       } catch (err) {
         // eslint-disable-next-line no-console
@@ -128,6 +129,14 @@ export function WalkthroughPlayer({ stops }: Props) {
       mapRef.current = null;
     };
   }, [token]);
+
+  // Theme flip: swap the base style (style.load above re-tints it).
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || styleThemeRef.current === theme) return;
+    styleThemeRef.current = theme;
+    swapStyle(map, theme);
+  }, [theme]);
 
   // ── Fetch stop data when index changes ───────────────────────
   useEffect(() => {
@@ -174,7 +183,7 @@ export function WalkthroughPlayer({ stops }: Props) {
     el.style.height = "18px";
     el.style.borderRadius = "9999px";
     el.style.background = ERA_COLORS[current.era] ?? "#92400E";
-    el.style.border = "3px solid #FFFFFF";
+    el.style.border = `3px solid ${MAP_PALETTE[themeRef.current].markerStroke}`;
     el.style.boxSizing = "content-box";
     el.style.boxShadow = "0 0 0 4px rgba(146, 64, 14, 0.25)";
 
@@ -188,7 +197,7 @@ export function WalkthroughPlayer({ stops }: Props) {
       duration: 1400,
       essential: true,
     });
-  }, [current]);
+  }, [current, mapReady]);
 
   // ── Auto-play ────────────────────────────────────────────────
   useEffect(() => {

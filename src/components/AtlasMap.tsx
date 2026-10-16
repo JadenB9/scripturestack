@@ -14,11 +14,36 @@ import {
 } from "@/lib/data/locations";
 import { TIMELINE_EVENTS, type TimelineEvent } from "@/lib/data/timeline";
 import { detectWebGL } from "@/lib/webgl-check";
+import { MAP_PALETTE, MAP_STYLES, swapStyle, tintBaseStyle } from "@/lib/map-theme";
+import { useTheme } from "./ThemeProvider";
 
 type Props = {
   initialLocationIds?: string[];
   highlightJourneyId?: string;
 };
+
+// Muted blue-green water, distinct from the parchment land
+const WATER = { light: "#B8CDD6", dark: "#121B24" } as const;
+
+// What the Layers menu switches on and off. Saved per device.
+type LayerToggles = { labels: boolean; modernNames: boolean; borders: boolean };
+const LAYERS_KEY = "ss-atlas-layers";
+const DEFAULT_LAYERS: LayerToggles = { labels: true, modernNames: true, borders: true };
+
+function readLayerToggles(): LayerToggles {
+  try {
+    const raw = localStorage.getItem(LAYERS_KEY);
+    if (!raw) return DEFAULT_LAYERS;
+    const parsed = JSON.parse(raw) as Partial<LayerToggles>;
+    return {
+      labels: parsed.labels !== false,
+      modernNames: parsed.modernNames !== false,
+      borders: parsed.borders !== false,
+    };
+  } catch {
+    return DEFAULT_LAYERS;
+  }
+}
 
 const ALL_PERIODS: Array<Period | "All"> = [
   "All",
@@ -75,7 +100,23 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
   const [journeyPanelOpen, setJourneyPanelOpen] = useState(false);
   const [periodPanelOpen, setPeriodPanelOpen] = useState(false);
   const [timelinePanelOpen, setTimelinePanelOpen] = useState(false);
+  const [layersPanelOpen, setLayersPanelOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
+  const [layers, setLayers] = useState<LayerToggles>(DEFAULT_LAYERS);
+  // Bumped every time the base style (re)loads so the data effects re-apply.
+  const [styleVersion, setStyleVersion] = useState(0);
+
+  const { theme } = useTheme();
+  // Map callbacks run outside React's render, so they read these refs.
+  const themeRef = useRef(theme);
+  const layersRef = useRef(layers);
+  const styleThemeRef = useRef<typeof theme | null>(null);
+  themeRef.current = theme;
+  layersRef.current = layers;
+
+  useEffect(() => {
+    setLayers(readLayerToggles());
+  }, []);
 
   const token = process.env.NEXT_PUBLIC_MAPBOX_TOKEN;
 
@@ -106,7 +147,8 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
     return list;
   }, [initialLocationIds, period, activeJourney]);
 
-  // Update GeoJSON source + route visibility whenever visible or activeJourney changes.
+  // Update GeoJSON source + route visibility whenever visible or activeJourney
+  // changes, and again after a style swap wipes the overlays.
   useEffect(() => {
     const map = mapRef.current;
     if (!map || !mapReady) return;
@@ -124,7 +166,42 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
         activeJourney?.id === j.id ? "visible" : "none",
       );
     }
-  }, [visible, mapReady, activeJourney]);
+  }, [visible, mapReady, activeJourney, styleVersion]);
+
+  // Layer toggles: our labels are one layer; modern names and borders live
+  // in the base style, so those go back through the tint pass.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady || !map.isStyleLoaded()) return;
+    if (map.getLayer("locations-labels")) {
+      map.setLayoutProperty("locations-labels", "visibility", layers.labels ? "visible" : "none");
+    }
+    tintBaseStyle(map, {
+      theme: themeRef.current,
+      water: WATER[themeRef.current],
+      modernNames: layers.modernNames,
+      borders: layers.borders,
+    });
+  }, [layers, mapReady, styleVersion]);
+
+  // Theme flip: swap the base style. style.load below rebuilds the overlays.
+  useEffect(() => {
+    const map = mapRef.current;
+    if (!map || !mapReady) return;
+    if (styleThemeRef.current === theme) return;
+    styleThemeRef.current = theme;
+    swapStyle(map, theme);
+  }, [theme, mapReady]);
+
+  const updateLayers = useCallback((patch: Partial<LayerToggles>) => {
+    setLayers((prev) => {
+      const next = { ...prev, ...patch };
+      try {
+        localStorage.setItem(LAYERS_KEY, JSON.stringify(next));
+      } catch {}
+      return next;
+    });
+  }, []);
 
   // Fly to fit journey bounds when a journey is selected.
   useEffect(() => {
@@ -150,6 +227,7 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
     setJourneyPanelOpen(false);
     setPeriodPanelOpen(false);
     setTimelinePanelOpen(false);
+    setLayersPanelOpen(false);
   }, []);
 
   const selectJourney = useCallback((j: Journey | null) => {
@@ -204,9 +282,10 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
         const mapboxgl = mapboxModule.default;
         mapboxgl.accessToken = token;
 
+        styleThemeRef.current = themeRef.current;
         map = new mapboxgl.Map({
           container: containerRef.current,
-          style: "mapbox://styles/mapbox/light-v11",
+          style: MAP_STYLES[themeRef.current],
           center: [35.2, 31.7],
           zoom: 4,
           attributionControl: false,
@@ -249,34 +328,24 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
           clearTimeout(styleTimeout);
         });
 
-        map.on("load", () => {
-          didLoad = true;
+        // Everything we draw on top of the base style. Runs on the first
+        // style load and again after setStyle() swaps light/dark, which
+        // throws away every source and layer we added.
+        const addOverlays = () => {
           if (!map) return;
+          const palette = MAP_PALETTE[themeRef.current];
+          const toggles = layersRef.current;
 
-          // Parchment + water tinting
-          try {
-            const layers = map.getStyle()?.layers ?? [];
-            for (const layer of layers) {
-              if (layer.type === "background") {
-                map.setPaintProperty(layer.id, "background-color", "#F3EAD8");
-              } else if (layer.type === "fill") {
-                if (/water|ocean|sea|river|lake/i.test(layer.id)) {
-                  // Muted blue-green water distinct from parchment land
-                  map.setPaintProperty(layer.id, "fill-color", "#B8CDD6");
-                } else if (/land|earth|landcover|landuse/i.test(layer.id)) {
-                  map.setPaintProperty(layer.id, "fill-color", "#F3EAD8");
-                }
-              } else if (layer.type === "line") {
-                // Soften modern country borders so they don't dominate
-                if (/admin|boundary|border/i.test(layer.id)) {
-                  map.setPaintProperty(layer.id, "line-opacity", 0.15);
-                }
-              }
-            }
-          } catch { /* ignore */ }
+          tintBaseStyle(map, {
+            theme: themeRef.current,
+            water: WATER[themeRef.current],
+            modernNames: toggles.modernNames,
+            borders: toggles.borders,
+          });
 
           // Journey route layers (all hidden by default)
           for (const j of JOURNEYS) {
+            if (map.getSource(`journey-route-${j.id}`)) continue;
             const coords = j.routeLocationIds
               .map((id) => LOCATION_BY_ID.get(id))
               .filter((l): l is Location => Boolean(l))
@@ -309,6 +378,7 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
           // These are rendered as part of the WebGL canvas, so they stay
           // pixel-locked to their geographic coordinates during pan/zoom
           // instead of floating like DOM markers.
+          if (map.getSource("locations")) return;
           map.addSource("locations", {
             type: "geojson",
             data: buildGeoJSON(LOCATIONS),
@@ -333,7 +403,7 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
                 "#92400E", // fallback
               ],
               "circle-stroke-width": 1.5,
-              "circle-stroke-color": "#FFFFFF",
+              "circle-stroke-color": palette.markerStroke,
             },
           });
 
@@ -350,15 +420,27 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
               "text-font": ["DIN Pro Medium", "Arial Unicode MS Regular"],
               "text-allow-overlap": false,
               "text-optional": true,
+              visibility: toggles.labels ? "visible" : "none",
             },
             paint: {
-              "text-color": "#44403C",
-              "text-halo-color": "#F3EAD8",
+              "text-color": palette.label,
+              "text-halo-color": palette.halo,
               "text-halo-width": 1.5,
             },
           });
+        };
 
-          // Click handler for circle markers
+        map.on("style.load", () => {
+          addOverlays();
+          if (!cancelled) setStyleVersion((v) => v + 1);
+        });
+
+        map.on("load", () => {
+          didLoad = true;
+          if (!map) return;
+
+          // Click handler for circle markers. Layer event handlers survive a
+          // setStyle() because they're keyed by layer id, so bind them once.
           map.on("click", "locations-circles", (e) => {
             if (!e.features?.length) return;
             const id = e.features[0].properties?.id;
@@ -450,7 +532,7 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
   }
 
   return (
-    <div className="absolute inset-0 flex flex-col" style={{ background: "#F3EAD8" }}>
+    <div className="absolute inset-0 flex flex-col" style={{ background: MAP_PALETTE[theme].land }}>
       {/* ── Toolbar: era dropdown + journey dropdown + search ── */}
       <div
         className="shrink-0 flex items-center gap-2 px-4 py-2 border-b z-10"
@@ -656,6 +738,61 @@ export function AtlasMap({ initialLocationIds, highlightJourneyId }: Props) {
                   </button>
                 );
               })}
+            </div>
+          )}
+        </div>
+
+        {/* Layers dropdown */}
+        <div className="relative">
+          <button
+            onClick={() => { const next = !layersPanelOpen; closeAllPanels(); setLayersPanelOpen(next); }}
+            className={`pill ${!layers.labels || !layers.modernNames || !layers.borders ? "is-active" : ""}`}
+            style={{ fontSize: 11, padding: "4px 10px" }}
+            aria-expanded={layersPanelOpen}
+          >
+            Layers
+            <span style={{ marginLeft: 4, fontSize: 9 }}>▾</span>
+          </button>
+
+          {layersPanelOpen && (
+            <div
+              className="absolute top-full left-0 mt-1 border shadow-lg"
+              style={{
+                background: "var(--color-surface)",
+                borderColor: "var(--color-border)",
+                borderRadius: 8,
+                width: 240,
+                zIndex: 50,
+              }}
+            >
+              {(
+                [
+                  ["labels", "Place names", "Our labels for the biblical sites"],
+                  ["modernNames", "Modern names", "The base map's cities and roads"],
+                  ["borders", "Modern borders", "Today's country lines, faded"],
+                ] as Array<[keyof LayerToggles, string, string]>
+              ).map(([key, label, hint]) => (
+                <label
+                  key={key}
+                  className="flex items-start gap-3 px-3 py-2.5 border-b last:border-b-0 cursor-pointer"
+                  style={{ borderColor: "var(--color-border)" }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={layers[key]}
+                    onChange={(e) => updateLayers({ [key]: e.target.checked })}
+                    className="mt-0.5 accent-[var(--color-gold)]"
+                  />
+                  <span>
+                    <span className="block text-[12px] font-medium" style={{ color: "var(--color-ink)" }}>
+                      {label}
+                    </span>
+                    <span className="block text-[10px] mt-0.5" style={{ color: "var(--color-ink-faint)" }}>
+                      {hint}
+                    </span>
+                  </span>
+                </label>
+              ))}
             </div>
           )}
         </div>
