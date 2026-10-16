@@ -10,12 +10,14 @@ Live at [scripturestack.j4den.com](https://scripturestack.j4den.com).
 ## What's inside
 
 - **Read** — a clean reading view (ESV) with commentary, cross-references,
-  and annotations you can keep
+  and annotations you can keep. Three type sizes (`+`/`-`), arrow keys for
+  prev/next chapter, a print layout, and a copy/share link for any verse
 - **Search** — semantic search over the whole Bible, powered by sentence
   embeddings from the companion
   [scripturestack-ml](https://github.com/JadenB9/scripturestack-ml) service
 - **Atlas** — an interactive map of biblical places, with traced journeys
-  (Jacob's, Paul's) and an era dropdown to watch the map change through time
+  (Jacob's, Paul's), an era dropdown to watch the map change through time,
+  and a Layers menu to hide modern names and borders
 - **Timeline** — the whole biblical narrative laid out chronologically,
   down to chapter level
 - **Graph** — a visual web of cross-references between verses
@@ -27,6 +29,12 @@ Live at [scripturestack.j4den.com](https://scripturestack.j4den.com).
   with word-level differences highlighted
 - **Analytics** — word frequency and writing-style stats across books
 - **Calendar** — the Hebrew calendar with its feasts, mapped to dates
+
+Everything has a light and a dark mode (the sun/moon button at the bottom of
+the sidebar; with nothing chosen it follows the device, and the map restyles
+too). Annotations, the theme, type size and atlas layers are all stored in
+the browser — there are no accounts. Chapter links get their own Open Graph
+card when shared.
 
 ## Stack
 
@@ -49,6 +57,21 @@ cp .env.example .env.local
 # fill in DATABASE_URL, ML_API_URL, ESV_API_KEY, NEXT_PUBLIC_MAPBOX_TOKEN
 npm run dev
 ```
+
+Without a database or ESV key the site still runs — the reading view just
+says the chapter isn't indexed yet, and the Atlas shows a "map disabled" card
+until there's a Mapbox token.
+
+```bash
+npm run typecheck   # tsc --noEmit
+npm test            # node's test runner via tsx (src/lib/*.test.ts)
+npm run build       # production build; also runs the type check
+```
+
+The API routes that cost something per call (`/api/search` hits the
+embedding service, `/api/read` can hit the ESV API) have a small per-client
+rate limit, and the search route rejects oversized or non-JSON bodies.
+Security headers and the CSP live in `next.config.ts`.
 
 ## Database
 
